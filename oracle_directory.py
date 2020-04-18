@@ -17,8 +17,8 @@ DOCUMENTATION = '''
 module: oracle_directory
 short_description: Manage Oracle directory objects
 description:
-    - Create/drop/replace Oracle directory objects.
-    - Define grants on directory.
+    - This module manage Oracle directory objects.
+    - It can create, replace or drop directories.
 version_added: 2.5
 author: Ari Stark (@ari-stark)
 options:
