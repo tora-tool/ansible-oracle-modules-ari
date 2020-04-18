@@ -1,244 +1,271 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+# Copyright: (c) 2014 Mikael Sandström <oravirt@gmail.com>
+# Copyright: (c) 2020, Ari Stark <ari.stark@netcourrier.com>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+
+import os
+import re
+
+import cx_Oracle
+from ansible.module_utils.basic import AnsibleModule
+
+ANSIBLE_METADATA = {
+    'metadata_version': '1.1',
+    'status': ['preview'],
+    'supported_by': 'community'}
+
 DOCUMENTATION = '''
 ---
 module: oracle_sql
 short_description: Execute arbitrary sql
 description:
-    - Execute arbitrary sql against an Oracle database
+    - This module can be used to execute arbitrary SQL queries or PL/SQL blocks against an Oracle database.
+    - If the SQL query is a select statement, the result will be returned.
+    - Connection is set to autocommit. There is no rollback mechanism implemented.
 version_added: "2.1.0.0"
+author:
+    - Mikael Sandström (@oravirt)
+    - Ari Stark (@ari-stark)
 options:
-    username:
-        description:
-            - The database username to connect to the database
-        required: false
-        default: None
-        aliases: ['un']
-    password:
-        description:
-            - The password to connect to the database
-        required: false
-        default: None
-        aliases: ['pw']
-    service_name:
-        description:
-            - The service_name to connect to the database
-        required: false
-        default: database_name
-        aliases: ['sn']
     hostname:
         description:
-            - The host of the database
-        required: false
+            - Specify the host name or IP address of the database server computer.
         default: localhost
-        aliases: ['host']
+        type: str
+    mode:
+        description:
+            - This option is the database administration privileges.
+        default: normal
+        type: str
+        choices: ['normal', 'sysdba']
+    oracle_home:
+        description:
+            - Define the directory into which all Oracle software is installed.
+            - Define ORACLE_HOME environment variable if set.
+        type: str
+    password:
+        description:
+            - Set the password to use to connect the database server.
+            - Must not be set if using Oracle wallet.
+        type: str
     port:
         description:
-            - The listener port to connect to the database
-        required: false
+            - Specify the listening port on the database server.
         default: 1521
-    sql:
-        description:
-            - The sql you want to execute
-        required: false
+        type: int
     script:
         description:
-            - The script you want to execute. Doesn't handle selects
-        required: false
+            - The SQL script to execute. It can be direct SQL statements, PL/SQL blocks or the name of a file.
+            - If I(script) is SQL statements, each statements must end with a semicolon at end of line.
+            - If I(script) is PL/SQL blocks, each block must end with a slash on a new line.
+            - If I(script) is a file, it must start with a @ (i.e @/path/to/file.sql).
+        type: str
+    service_name:
+        description:
+            - Specify the service name of the database you want to access.
+        required: true
+        type: str
+    sql:
+        description:
+            - A single SQL statement.
+            - If this statement is a select query (starts with select) the result is returned.
+            - The statement mustn't end with a semicolon.
+        type: str
+    username:
+        description:
+            - Set the login to use to connect the database server.
+            - Must not be set if using Oracle wallet.
+        type: str
+        aliases:
+            - user
+requirements:
+    - Python module cx_Oracle
+    - Oracle basic tools.
 notes:
-    - cx_Oracle needs to be installed
-    - Oracle client libraries need to be installed along with ORACLE_HOME and LD_LIBRARY_PATH settings.
-requirements: [ "cx_Oracle" ]
-author: Mikael Sandström, oravirt@gmail.com, @oravirt
+    - Check mode is supported.
+    - In check mode, the select query are executed.
+    - Diff mode is not supported.
 '''
 
 EXAMPLES = '''
-# Execute arbitrary sql
+# Execute one arbitrary SQL statement (no trailing semicolon)
 - oracle_sql:
-    username: "{{ user }}"
-    password: "{{ password }}"
-    service_name: one.world
-    sql: 'select username from dba_users'
-# Execute arbitrary script1
+    hostname: "foo.server.net"
+    username: "foo"
+    password: "bar"
+    service_name: "pdb001"
+    sql: "select username from dba_users"
+
+# Execute several arbitrary SQL statements (each statement must end with a semicolon at end of line)
 - oracle_sql:
-    username: "{{ user }}"
-    password: "{{ password }}"
-    service_name: one.world
-    script: /u01/scripts/create-all-the-procedures.sql
-# Execute arbitrary script2
+    hostname: "foo.server.net"
+    username: "foo"
+    password: "bar"
+    service_name: "pdb001"
+    script: |
+        insert into foo (f1, f2) values ('ab', 'cd');
+        update foo set f2 = 'fg' where f1 = 'ab';
+
+# Execute several arbitrary PL/SQL blocks (must end with a trailing slash)
 - oracle_sql:
-    username: "{{ user }}"
-    password: "{{ password }}"
-    service_name: one.world
-    script: /u01/scripts/create-tables-and-insert-default-values.sql
+    hostname: "foo.server.net"
+    username: "foo"
+    password: "bar"
+    service_name: "pdb001"
+    script: |
+        begin
+            [...]
+        end;
+        /
+        begin
+            [...]
+        end;
+        /
+
+# Execute arbitrary SQL file
+- oracle_sql:
+    hostname: "foo.server.net"
+    username: "foo"
+    password: "bar"
+    service_name: "pdb001"
+    script: '@/u01/scripts/create-all-the-procedures.sql'
 '''
-import os
-from ansible.module_utils.basic import AnsibleModule
 
-try:
-    import cx_Oracle
-except ImportError:
-    cx_oracle_exists = False
-else:
-    cx_oracle_exists = True
+RETURN = '''
+data:
+    description: Contains a two dimensionnal array containing the fetched lines and columns of the select query. 
+    returned: if I(sql) is a select statement
+    type: list
+    elements: list
+statements:
+    description: Contains a list of SQL statements executed.
+    returned: if I(sql) is not a select statement or I(script) is used
+    type: list
+    elements: str 
+'''
+
+global module
+global cursor
+global statements
 
 
-def execute_sql_get(module, cursor, sql):
+def execute_select(sql):
+    """Executes a select query and return fetched data"""
     try:
-        cursor.execute(sql)
-        result = (cursor.fetchall())
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg = 'Something went wrong while executing sql_get - %s sql: %s' % (error.message, sql)
-        module.fail_json(msg=msg, changed=False)
-        return False
-    return result
+        return cursor.execute(sql).fetchall()
+    except cx_Oracle.DatabaseError as e:
+        error = e.args[0]
+        module.fail_json(msg=error.message, code=error.code, request=sql)
 
 
-def execute_sql(module, cursor, conn, sql):
-    if 'insert' or 'delete' or 'update' in sql.lower():
-        docommit = True
-    else:
-        docommit = False
-
-    try:
-        # module.exit_json(msg=sql.strip())
-        cursor.execute(sql)
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg = 'Something went wrong while executing sql - %s sql: %s' % (error.message, sql)
-        module.fail_json(msg=msg, changed=False)
-        return False
-    if docommit:
-        conn.commit()
-    return True
+def execute_statement(sql):
+    """Executes a query"""
+    if not module.check_mode:
+        try:
+            cursor.execute(sql)
+            statements.append(sql)
+        except cx_Oracle.DatabaseError as e:
+            error = e.args[0]
+            module.fail_json(msg=error.message, code=error.code, request=sql)
 
 
-def read_file(module, script):
-    try:
-        f = open(script, 'r')
-        sqlfile = f.read()
-        f.close()
-        return sqlfile
-    except IOError as e:
-        msg = 'Couldn\'t open/read file: %s' % (e)
-        module.fail_json(msg=msg, changed=False)
-    return
+def execute_statements(script):
+    """Executes several statements.
 
+    This function determines if it's dealing with PL/SQL blocks or multi-statement queries. It cannot deal with both.
+    PL/SQL blocks is defined by a trailing slash (/).
+    If there is no trailing slash, it's considered multi-statement queries separated by a semicolon.
+    """
 
-def clean_sqlfile(sqlfile):
-    sqlfile = sqlfile.strip()
-    sqlfile = sqlfile.lstrip()
-    sqlfile = sqlfile.lstrip()
-    sqlfile = os.linesep.join([s for s in sqlfile.splitlines() if s])
-    return sqlfile
+    if re.search(r'/\s*$', script):  # If it's PL/SQL blocks
+        seperator = r'^\s*/\s*$'
+    else:  # If it's SQL statements
+        seperator = r';\s*$'
+
+    for query in re.split(seperator, script, flags=re.MULTILINE):
+        if query.strip():
+            execute_statement(query.strip())
 
 
 def main():
+    global module
+    global cursor
+    global statements
 
     module = AnsibleModule(
         argument_spec=dict(
-            user=dict(required=False, aliases=['un', 'username']),
-            password=dict(required=False, no_log=True, aliases=['pw']),
-            mode=dict(default="normal", choices=["sysasm", "sysdba", "normal"]),
-            service_name=dict(required=False, aliases=['sn']),
-            hostname=dict(required=False, default='localhost', aliases=['host']),
-            port=dict(required=False, default=1521),
-            sql=dict(required=False),
-            script=dict(required=False),
-
+            hostname=dict(type='str', default='localhost'),
+            mode=dict(type='str', default='normal', choices=['normal', 'sysdba']),
+            oracle_home=dict(type='str', required=False),
+            password=dict(type='str', required=False, no_log=True),
+            port=dict(type='int', default=1521),
+            script=dict(type='str', required=False),
+            service_name=dict(type='str', required=True),
+            sql=dict(type='str', required=False),
+            username=dict(type='str', required=False, aliases=['user']),
         ),
-        mutually_exclusive=[['sql', 'script']]
+        mutually_exclusive=[['sql', 'script']],
+        required_together=[['username', 'password']],
+        supports_check_mode=True,
     )
 
-    user = module.params["user"]
-    password = module.params["password"]
-    mode = module.params["mode"]
-    service_name = module.params["service_name"]
-    hostname = module.params["hostname"]
-    port = module.params["port"]
-    sql = module.params["sql"]
-    script = module.params["script"]
+    hostname = module.params['hostname']
+    mode = module.params['mode']
+    oracle_home = module.params['oracle_home']
+    password = module.params['password']
+    port = module.params['port']
+    script = module.params['script']
+    service_name = module.params['service_name']
+    sql = module.params['sql']
+    username = module.params['username']
 
-    if not cx_oracle_exists:
-        msg = "The cx_Oracle module is required. Also set LD_LIBRARY_PATH & ORACLE_HOME"
-        module.fail_json(msg=msg)
+    if oracle_home:
+        os.environ['ORACLE_HOME'] = oracle_home
 
-    wallet_connect = '/@%s' % service_name
+    # Setting connection
+    connection_parameters = {}
+    if username and password:
+        connection_parameters['user'] = username
+        connection_parameters['password'] = password
+        connection_parameters['dsn'] = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
+    else:  # Using Oracle wallet
+        connection_parameters['dsn'] = service_name
 
+    if mode == 'sysdba':
+        connection_parameters['mode'] = cx_Oracle.SYSDBA
+
+    # Connecting
     try:
-        if not user and not password:  # If neither user or password is supplied, the use of an oracle wallet is assumed
-            if mode == 'sysdba':
-                connect = wallet_connect
-                conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
-            elif mode == 'sysasm':
-                connect = wallet_connect
-                conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSASM)
-            else:
-                connect = wallet_connect
-                conn = cx_Oracle.connect(wallet_connect)
+        connection = cx_Oracle.connect(**connection_parameters)
+        connection.autocommit = True
+        cursor = connection.cursor()
+    except cx_Oracle.DatabaseError as e:
+        error = e.args[0]
+        module.fail_json(msg=error.message, code=error.code)
 
-        elif user and password:
-            if mode == 'sysdba':
-                dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-                connect = dsn
-                conn = cx_Oracle.connect(user, password, dsn, mode=cx_Oracle.SYSDBA)
-            elif mode == 'sysasm':
-                dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-                connect = dsn
-                conn = cx_Oracle.connect(user, password, dsn, mode=cx_Oracle.SYSASM)
-            else:
-                dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-                connect = dsn
-                conn = cx_Oracle.connect(user, password, dsn)
+    statements = []
 
-        elif not user or not password:
-            module.fail_json(msg='Missing username or password for cx_Oracle')
-
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg = 'Could not connect to database - %s, connect descriptor: %s' % (error.message, connect)
-        module.fail_json(msg=msg, changed=False)
-
-    cursor = conn.cursor()
-
-    if sql:
-        if sql.lower().startswith('begin '):
-            execute_sql(module, cursor, conn, sql)
-            msg = 'SQL executed: %s' % (sql)
-            module.exit_json(msg=msg, changed=True)
-
+    if sql:  # Mono statement.
+        if re.match(r'^\s*select\s+', sql, re.IGNORECASE):
+            result = execute_select(sql)
+            module.exit_json(msg='Select statement executed.', changed=False, data=result)
         else:
-            sql = sql.rstrip(';')
-            if sql.lower().startswith('select '):
-                result = execute_sql_get(module, cursor, sql)
-                module.exit_json(msg=result, changed=False)
-            else:
-                execute_sql(module, cursor, conn, sql)
-                msg = 'SQL executed: %s' % (sql)
-                module.exit_json(msg=msg, changed=True)
-    else:
-        sqlfile = read_file(module, script)
-        if len(sqlfile) > 0:
-            sqlfile = clean_sqlfile(sqlfile)
-            
-            if sqlfile.endswith('/') or ('create or replace') in sqlfile.lower():
-                sqldelim = '/'
-            else:
-                sqldelim = ';'
-            
-            sqlfile = sqlfile.strip(sqldelim)
-            sql = sqlfile.split(sqldelim)
-            
-            for q in sql:
-                execute_sql(module, cursor, conn, q)
-            msg = 'Finished running script %s \nContents: \n%s' % (script, sqlfile)
-            module.exit_json(msg=msg, changed=True)
-        else:
-            module.fail_json(msg='SQL file seems to be empty')
-
-    module.exit_json(msg="Unhandled exit", changed=False)
+            execute_statement(sql)
+            module.exit_json(msg='DML or DDL statement executed.', changed=True, statements=statements)
+    elif not script.startswith('@'):  # Multi statement
+        execute_statements(script)
+        module.exit_json(msg='DML or DDL statements executed.', changed=True, statements=statements)
+    else:  # SQL file
+        try:
+            file_name = script.lstrip('@')
+            with open(file_name, 'r') as f:
+                execute_statements(f.read())
+            module.exit_json(msg='DML or DDL statements executed.', changed=True, statements=statements)
+        except IOError as e:
+            module.fail_json(msg=str(e), changed=False)
 
 
 if __name__ == '__main__':

@@ -40,12 +40,21 @@ The Python module `cx_Oracle` needs to be installed on the Ansible host. (`pip i
 
 #### oracle_directory ####
 
-- This module manage Oracle directory objects.
+- This module manages Oracle directory objects.
 - It can create, replace or drop directories.
+
+#### oracle_sql ####
+
+- This module executes SQL queries or PL/SQL blocks.
+- It can be used to execute select statements to fetch data from database.
+- It can be used to execute arbitrary SQL statement. Connection is set to autocommit, so there's no transaction management.
+- It can be used to execute PL/SQL blocks.
+- It cannot execute SQL statements and PL/SQL blocks in one call.
+- Its inputs are direct SQL or a file containing SQL.
 
 #### oracle_tablespace ####
 
-- This module manage Oracle tablespace objects.
+- This module manages Oracle tablespace objects.
 - It can create, alter or drop tablespaces and datafiles.
 - It supports permanent, undo and temporary tablespaces.
 - It supports online/offline state and read only/read write state.
@@ -195,16 +204,6 @@ pre-req: cx_Oracle (if GI is not running)
 
 **Note:**
 At the moment, Idempotence only applies to the state (present,absent,started, stopped). No other options are considered.
-
-#### oracle_sql ####
-
-pre-req: cx_Oracle
-
-- 2 modes: sql or script
-- Executes arbitrary sql or runs a script
-
-**Note:**
-Should be considered as experimental, or an alpha-release
 
 #### oracle_stats_prefs ####
 

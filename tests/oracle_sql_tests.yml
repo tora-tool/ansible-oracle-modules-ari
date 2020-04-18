@@ -1,0 +1,245 @@
+---
+# Run using : ansible-playbook oracle_sql_tests.yml
+- name: Select query
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test1"
+
+  tasks:
+    - name: select from dual
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        sql: "select * from dual"
+      register: _
+      failed_when: _.changed or _.failed or _.data[0][0] != 'X'
+
+    - name: select from inexistent_table
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        sql: "select * from inexistent_table"
+      register: _
+      failed_when: not _.failed or 'code' not in _ or _.code != 942
+
+- name: DDL and update queries
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test2"
+
+  tasks:
+    - name: prepare test
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        script: |
+          create user foo identified by "password";
+          grant create session to foo;
+          alter user foo quota unlimited on users;
+          create table foo.t_foo (f1 varchar2(10), f2 varchar2(10));
+
+    - name: insert statement
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "foo"
+        password: "password"
+        sql: "{{ item }}"
+      register: _
+      failed_when: not _.changed
+      loop:
+        - "insert into t_foo (f1, f2) values ('ab', 'cd')"
+        - "insert into t_foo (f1, f2) values ('ef', 'gh')"
+
+    - name: check data
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "foo"
+        password: "password"
+        sql: "select f1, f2 from t_foo order by f1"
+      register: _
+      failed_when: _.changed or _.failed or _.data[0][0] != 'ab' or _.data[0][1] != 'cd' or _.data[1][0] != 'ef' or _.data[1][1] != 'gh'
+
+    - name: clean test
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        sql: "drop user foo cascade"
+
+- name: Anonymous PL/SQL Block
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test3"
+
+  tasks:
+    - name: execute two PL/SQL blocks
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        script: |
+          declare
+            foo varchar2(10);
+          begin
+            foo := 'ab';
+          end;
+          /
+          declare
+            bar varchar2(10);
+          begin
+            bar := 'ab';
+          end;
+          /
+      register: _
+      failed_when: _.failed or _.statements | length != 2
+
+- name: SQL file
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test4"
+
+  tasks:
+    - name: prepare test
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        script: "@sql_file_test.sql"
+      register: _
+      failed_when: _.failed or _.statements | length != 2
+
+- name: Inexistent SQL file
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test5"
+
+  tasks:
+    - name: execute inexistent SQL file
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        script: "@inexistent.sql"
+      register: _
+      failed_when: not _.failed
+
+- name: Special cases
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test6"
+
+  tasks:
+    - name: execute requests with semicolon in it
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        script: "select ';' from dual;"
+
+    - name: execute requests on two lines
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        script: |
+          select ';'
+          from dual;
+
+- name: Verify check mode
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test7"
+
+  tasks:
+    - name: prepare test
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        script: |
+          create user foo identified by "password";
+          grant create session to foo;
+          alter user foo quota unlimited on users;
+          create table foo.t_foo (f1 varchar2(10), f2 varchar2(10));
+
+    - name: insert statement with check mode
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "foo"
+        password: "password"
+        sql: "{{ item }}"
+      check_mode: yes
+      register: _
+      failed_when: not _.changed
+      loop:
+        - "insert into t_foo (f1, f2) values ('ab', 'cd')"
+        - "insert into t_foo (f1, f2) values ('ef', 'gh')"
+
+    - name: check nothing was inserted
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "foo"
+        password: "password"
+        sql: "select f1, f2 from t_foo order by f1"
+      register: _
+      failed_when: _.changed or _.failed or _.data | length != 0
+
+    - name: insert statement
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "foo"
+        password: "password"
+        script: |
+          insert into t_foo (f1, f2) values ('ab', 'cd');
+          insert into t_foo (f1, f2) values ('ef', 'gh');
+      register: _
+      failed_when: not _.changed
+
+    - name: check select still works in check_mode
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "foo"
+        password: "password"
+        sql: "select f1, f2 from t_foo order by f1"
+      check_mode: yes
+      register: _
+      failed_when: _.changed or _.failed or _.data[0][0] != 'ab' or _.data[0][1] != 'cd' or _.data[1][0] != 'ef' or _.data[1][1] != 'gh'
+
+    - name: clean test
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        sql: "drop user foo cascade"
+...
