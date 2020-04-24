@@ -19,7 +19,7 @@
         state: "present"
         bigfile: no
       register: _
-      failed_when: _.changed == false
+      failed_when: not _.changed
 
     - name: create undo tablespace
       local_action:
@@ -35,7 +35,7 @@
         bigfile: no
         content: "undo"
       register: _
-      failed_when: _.changed == false
+      failed_when: not _.changed
 
     - name: create temp tablespace
       local_action:
@@ -51,7 +51,7 @@
         bigfile: yes
         content: "temp"
       register: _
-      failed_when: _.changed == false
+      failed_when: not _.changed
 
     - name: drop tablespaces
       local_action:
@@ -63,7 +63,7 @@
         tablespace: "{{ item }}"
         state: "absent"
       register: _
-      failed_when: _.changed == false
+      failed_when: not _.changed
       loop:
         - ts
         - ts_undo
@@ -88,7 +88,7 @@
         state: "present"
         bigfile: no
       register: _
-      failed_when: _.changed == false
+      failed_when: not _.changed
       check_mode: yes
 
     - name: drop tablespaces don't do anything
@@ -101,7 +101,7 @@
         tablespace: "ts"
         state: "absent"
       register: _
-      failed_when: _.changed == true
+      failed_when: _.changed
 
 - name: Drop in check mode
   hosts: oracle_container
@@ -132,7 +132,7 @@
         tablespace: "ts"
         state: "absent"
       register: _
-      failed_when: _.changed == false
+      failed_when: not _.changed
       check_mode: yes
 
     - name: drop tablespace should still change and really drop
@@ -145,7 +145,7 @@
         tablespace: "ts"
         state: "absent"
       register: _
-      failed_when: _.changed == false
+      failed_when: not _.changed
 
 - name: Create with several datafiles
   hosts: oracle_container
@@ -286,4 +286,89 @@
       fail:
         msg: "no error or wrong error"
       when: not _.failed or (_.code != 933 and 'ORA-00933' not in _.msg and _.request is not defined)
+
+- name: Create same tablespace two times (no changed expected second time)
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test7"
+
+  tasks:
+    - name: create tablespace
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "ts"
+        size: "1M"
+        datafile: "/tmp/ts.dbf"
+        autoextend: yes
+        nextsize: "50M"
+        maxsize: "unlimited"
+      register: _
+      failed_when: not _.changed
+
+    - name: test reentrance
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "ts"
+        size: "1M"
+        datafile: "/tmp/ts.dbf"
+        autoextend: yes
+        nextsize: "50M"
+        maxsize: "unlimited"
+      register: _
+      failed_when: _.changed
+
+    - name: create temp tablespace
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "ts_temp"
+        content: "temp"
+        size: "4M"
+        datafile: "/tmp/ts_temp.dbf"
+        autoextend: yes
+        nextsize: "50M"
+        maxsize: "unlimited"
+      register: _
+      failed_when: not _.changed
+
+    - name: test reentrance
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "ts_temp"
+        content: "temp"
+        size: "4M"
+        datafile: "/tmp/ts_temp.dbf"
+        autoextend: yes
+        nextsize: "50M"
+        maxsize: "unlimited"
+      register: _
+      failed_when: _.changed
+
+    - name: drop tablespaces
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "{{ item }}"
+        state: "absent"
+      loop:
+        - "ts"
+        - "ts_temp"
 ...

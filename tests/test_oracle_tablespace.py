@@ -14,19 +14,21 @@ class TestSize(unittest.TestCase):
 
     def test_to_string_int(self):
         size = Size(123)
-        self.assertEqual('123.0', str(size))
+        self.assertEqual('123', str(size))
         size = Size(125952)
-        self.assertEqual('123.0K', str(size))
+        self.assertEqual('123K', str(size))
 
     def test_to_string_oracle_format(self):
         size = Size('15M')
-        self.assertEqual('15.0M', str(size))
+        self.assertEqual('15M', str(size))
         size = Size('125952K')
-        self.assertEqual('123.0M', str(size))
+        self.assertEqual('123M', str(size))
         size = Size('0.5M')
-        self.assertEqual('512.0K', str(size))
+        self.assertEqual('512K', str(size))
         size = Size('1024E')
-        self.assertEqual('1.0Z', str(size))
+        self.assertEqual('1Z', str(size))
+        size = Size('1280K')
+        self.assertEqual('1280K', str(size))
 
     def test_equals(self):
         self.assertEqual(Size('10M'), Size('10M'))
@@ -60,9 +62,9 @@ class TestDataFile(unittest.TestCase):
     def test_constructor_with_value(self):
         d = Datafile('/path/to/dbf', '0.5K', True, '1M', 'unlimited')
         self.assertEqual('/path/to/dbf', d.path)
-        self.assertEqual('512.0', str(d.size))
+        self.assertEqual('512', str(d.size))
         self.assertTrue(d.autoextend)
-        self.assertEqual('1.0M', str(d.nextsize))
+        self.assertEqual('1M', str(d.nextsize))
         self.assertEqual('unlimited', str(d.maxsize))
 
     def test_needs_resize(self):
@@ -99,6 +101,14 @@ class TestDataFile(unittest.TestCase):
         prev = Datafile('/path/to/dbf', 1024, True, '1M', '20M')
         self.assertFalse(new.needs_change_autoextend(prev), 'same values')
 
+        new = Datafile('/path/to/dbf', 512, True, '1M', '32G', False)
+        prev = Datafile('/path/to/dbf', 1024, True, '1M', 'unlimited', False)
+        self.assertFalse(new.needs_change_autoextend(prev), '32G and unlimited are same value for small files')
+
+        new = Datafile('/path/to/dbf', 512, True, '1M', '32G', True)
+        prev = Datafile('/path/to/dbf', 1024, True, '1M', 'unlimited', True)
+        self.assertTrue(new.needs_change_autoextend(prev), '32G and unlimited are different values for big files')
+
     def test_autoextend_clause(self):
         d = Datafile('/path/to/dbf', 512, False)
         self.assertEqual(' autoextend off', d.autoextend_clause())
@@ -110,29 +120,29 @@ class TestDataFile(unittest.TestCase):
         self.assertEqual(' autoextend on', d.autoextend_clause())
 
         d = Datafile('/path/to/dbf', 512, True, '1M', '20M')
-        self.assertEqual(' autoextend on next 1.0M maxsize 20.0M', d.autoextend_clause())
+        self.assertEqual(' autoextend on next 1M maxsize 20M', d.autoextend_clause())
 
     def test_file_specification_clause(self):
         d = Datafile('/path/to/dbf', 512, False)
-        self.assertEqual('size 512.0 reuse  autoextend off', d.file_specification_clause())
+        self.assertEqual('size 512 reuse  autoextend off', d.file_specification_clause())
 
         d = Datafile('/path/to/dbf', 1024, True)
-        self.assertEqual('size 1.0K reuse  autoextend on', d.file_specification_clause())
+        self.assertEqual('size 1K reuse  autoextend on', d.file_specification_clause())
 
     def test_data_file_clause(self):
         d = Datafile('/path/to/dbf', 512, False)
-        self.assertEqual("'/path/to/dbf' size 512.0 reuse  autoextend off", d.data_file_clause())
+        self.assertEqual("'/path/to/dbf' size 512 reuse  autoextend off", d.data_file_clause())
 
     def test_as_dict(self):
         d = Datafile('/path/to/dbf', 512, False)
-        self.assertDictEqual({'path': '/path/to/dbf', 'size': '512.0', 'autoextend': False}, d.asdict())
+        self.assertDictEqual({'path': '/path/to/dbf', 'size': '512', 'autoextend': False}, d.asdict())
 
         d = Datafile('/path/to/dbf', 512, True)
-        self.assertDictEqual({'path': '/path/to/dbf', 'size': '512.0', 'autoextend': True}, d.asdict())
+        self.assertDictEqual({'path': '/path/to/dbf', 'size': '512', 'autoextend': True}, d.asdict())
 
         d = Datafile('/path/to/dbf', 512, True, '1M', '10M')
         self.assertDictEqual(
-            {'path': '/path/to/dbf', 'size': '512.0', 'autoextend': True, 'nextsize': '1.0M', 'maxsize': '10.0M'},
+            {'path': '/path/to/dbf', 'size': '512', 'autoextend': True, 'nextsize': '1M', 'maxsize': '10M'},
             d.asdict())
 
 

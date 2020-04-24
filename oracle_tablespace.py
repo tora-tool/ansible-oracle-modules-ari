@@ -210,7 +210,7 @@ EXAMPLES = '''
 
 RETURN = '''
 ddls:
-    description: Ordered list of DDL requests executed during module execution. 
+    description: Ordered list of DDL requests executed during module execution.
     returned: always
     type: list
     elements: str
@@ -245,16 +245,16 @@ class Size:
             return 'unlimited'
         num = self.size
         for unit in [''] + self.units:
-            if num < 1024.0:
-                return '%.1f%s' % (num, unit)
+            if num % 1024.0 != 0:
+                return '%i%s' % (num, unit)
             num /= 1024.0
-        return '%.1f%s' % (num, 'Z')
+        return '%i%s' % (num, 'Z')
 
     def __eq__(self, other):
         if not isinstance(other, self.__class__):
             return False
-        return self.unlimited and other.unlimited or \
-               self.size == other.size
+        return (self.unlimited and other.unlimited or
+                self.size == other.size)
 
     def __lt__(self, other):
         if self.unlimited:
@@ -285,12 +285,15 @@ class Datafile:
     path = None
     size = None
 
-    def __init__(self, path, size, autoextend=False, nextsize=None, maxsize=None):
+    def __init__(self, path, size, autoextend=False, nextsize=None, maxsize=None, bigfile=False):
         self.path = path
         self.size = Size(size) if size else None
         self.autoextend = autoextend
         self.nextsize = Size(nextsize) if nextsize else None
         self.maxsize = Size(maxsize) if maxsize else None
+        # 32G for a smallfile is an unlimited max size ; it's not quite 32G, thus the 100K precision.
+        if not bigfile and self.maxsize and abs(32 * 1024 ** 3 - self.maxsize.size) <= 100 * 1024:
+            self.maxsize.unlimited = True
 
     def data_file_clause(self):
         sql = "'%s' %s" % (self.path, self.file_specification_clause())
@@ -413,9 +416,15 @@ def get_existing_tablespace(tablespace):
 
 def get_existing_datafiles(tablespace):
     """Search for all existing datafiles for a specific tablespace"""
-    sql = "select file_name, bytes, autoextensible, increment_by, maxbytes" \
-          "  from dba_data_files" \
-          " where tablespace_name = :tn"
+    sql = "select df.file_name, df.bytes, df.autoextensible, df.increment_by * ts.block_size, df.maxbytes, ts.bigfile" \
+          "  from dba_tablespaces ts, dba_data_files df" \
+          " where ts.tablespace_name = :tn" \
+          "   and ts.tablespace_name = df.tablespace_name" \
+          " union all " \
+          "select df.file_name, df.bytes, df.autoextensible, df.increment_by * ts.block_size, df.maxbytes, ts.bigfile" \
+          "  from dba_tablespaces ts, dba_temp_files df" \
+          " where ts.tablespace_name = :tn" \
+          "   and ts.tablespace_name = df.tablespace_name"
     params = {'tn': tablespace}
 
     try:
@@ -424,7 +433,8 @@ def get_existing_datafiles(tablespace):
 
         for row in rows:
             datafiles.append(
-                Datafile(path=row[0], size=row[1], autoextend=row[2] == 'YES', nextsize=row[3], maxsize=row[4]))
+                Datafile(path=row[0], size=row[1], autoextend=row[2] == 'YES', nextsize=row[3], maxsize=row[4],
+                         bigfile=row[5] == 'YES'))
         diff['before']['datafiles'] = [datafile.asdict() for datafile in datafiles]
         return datafiles
     except cx_Oracle.DatabaseError as e:
@@ -460,7 +470,8 @@ def ensure_datafile_state(prev_tablespace, tablespace, datafiles, content_type):
 
             # What can change if autoextend : next_size and max_size
             if datafile.needs_change_autoextend(prev_datafile):
-                execute_ddl("alter database datafile '%s' %s" % (datafile.path, datafile.autoextend_clause()))
+                execute_ddl("alter database %s '%s' %s" % (
+                    content_type.datafile_clause(), datafile.path, datafile.autoextend_clause()))
                 changed = True
         else:  # or create it
             execute_ddl(
@@ -604,7 +615,7 @@ def main():
         state = 'online'
     datafiles = []
     for datafile_name in datafile_names:
-        datafile = Datafile(datafile_name, size, autoextend, nextsize, maxsize)
+        datafile = Datafile(datafile_name, size, autoextend, nextsize, maxsize, bigfile)
         datafiles.append(datafile)
     file_type = FileType(bigfile)
     content_type = ContentType(content)
