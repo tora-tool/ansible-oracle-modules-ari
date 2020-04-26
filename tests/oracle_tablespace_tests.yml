@@ -2,7 +2,7 @@
 # Run using : ansible-playbook oracle_tablespace_tests.yml
 - name: Create and drop tablespace
   hosts: oracle_container
-  gather_facts: false
+  gather_facts: no
   tags: "test1"
 
   tasks:
@@ -10,12 +10,12 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
         size: "1M"
-        datafile: "/tmp/ts.dbf"
+        datafiles: "/tmp/ts.dbf"
         state: "present"
         bigfile: no
       register: _
@@ -25,12 +25,12 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts_undo"
         size: "1M"
-        datafile: "/tmp/ts_undo.dbf"
+        datafiles: "/tmp/ts_undo.dbf"
         state: "online"
         bigfile: no
         content: "undo"
@@ -41,12 +41,12 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts_temp"
         size: "2M"
-        datafile: "/tmp/ts_temp.dbf"
+        datafiles: "/tmp/ts_temp.dbf"
         state: "present"
         bigfile: yes
         content: "temp"
@@ -57,7 +57,7 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "{{ item }}"
@@ -71,7 +71,7 @@
 
 - name: Create in check mode
   hosts: oracle_container
-  gather_facts: false
+  gather_facts: no
   tags: "test2"
 
   tasks:
@@ -79,12 +79,12 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
         size: "1M"
-        datafile: "/tmp/ts.dbf"
+        datafiles: "/tmp/ts.dbf"
         state: "present"
         bigfile: no
       register: _
@@ -95,7 +95,7 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
@@ -105,7 +105,7 @@
 
 - name: Drop in check mode
   hosts: oracle_container
-  gather_facts: false
+  gather_facts: no
   tags: "test3"
 
   tasks:
@@ -113,12 +113,12 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
         size: "1M"
-        datafile: "/tmp/ts.dbf"
+        datafiles: "/tmp/ts.dbf"
         state: "present"
         bigfile: no
 
@@ -126,7 +126,7 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
@@ -139,7 +139,7 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
@@ -149,7 +149,7 @@
 
 - name: Create with several datafiles
   hosts: oracle_container
-  gather_facts: false
+  gather_facts: no
   tags: "test4"
 
   tasks:
@@ -157,12 +157,12 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
         size: "1M"
-        datafile:
+        datafiles:
           - "/tmp/ts1.dbf"
           - "/tmp/ts2.dbf"
         state: "present"
@@ -172,12 +172,12 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts_temp"
         size: "2M"
-        datafile:
+        datafiles:
           - "/tmp/ts_temp1.dbf"
           - "/tmp/ts_temp2.dbf"
         state: "present"
@@ -188,7 +188,7 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "{{ item }}"
@@ -199,7 +199,7 @@
 
 - name: Modify a tablespace
   hosts: oracle_container
-  gather_facts: false
+  gather_facts: no
   tags: "test5"
 
   tasks:
@@ -207,12 +207,12 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
         size: "1M"
-        datafile:
+        datafiles:
           - "/tmp/ts1.dbf"
         state: "present"
         bigfile: no
@@ -221,12 +221,12 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
         size: "1M"
-        datafile:
+        datafiles:
           - "/tmp/ts1.dbf"
           - "/tmp/ts2.dbf"
         state: "present"
@@ -236,12 +236,12 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
         size: "2M"
-        datafile:
+        datafiles:
           - "/tmp/ts1.dbf"
           - "/tmp/ts3.dbf"
         state: "present"
@@ -254,7 +254,7 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
@@ -262,7 +262,7 @@
 
 - name: Test error message
   hosts: oracle_container
-  gather_facts: false
+  gather_facts: no
   tags: "test6"
 
   tasks:
@@ -270,16 +270,16 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
         size: "1M"
-        datafile:
+        datafiles:
           - "/tmp/t's1.dbf"
         state: "present"
         bigfile: no
-      ignore_errors: true
+      ignore_errors: yes
       register: _
 
     - name: verify error
@@ -289,7 +289,7 @@
 
 - name: Create same tablespace two times (no changed expected second time)
   hosts: oracle_container
-  gather_facts: false
+  gather_facts: no
   tags: "test7"
 
   tasks:
@@ -297,12 +297,12 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
         size: "1M"
-        datafile: "/tmp/ts.dbf"
+        datafiles: "/tmp/ts.dbf"
         autoextend: yes
         nextsize: "50M"
         maxsize: "unlimited"
@@ -313,12 +313,12 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts"
         size: "1M"
-        datafile: "/tmp/ts.dbf"
+        datafiles: "/tmp/ts.dbf"
         autoextend: yes
         nextsize: "50M"
         maxsize: "unlimited"
@@ -329,13 +329,13 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts_temp"
         content: "temp"
         size: "4M"
-        datafile: "/tmp/ts_temp.dbf"
+        datafiles: "/tmp/ts_temp.dbf"
         autoextend: yes
         nextsize: "50M"
         maxsize: "unlimited"
@@ -346,13 +346,13 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "ts_temp"
         content: "temp"
         size: "4M"
-        datafile: "/tmp/ts_temp.dbf"
+        datafiles: "/tmp/ts_temp.dbf"
         autoextend: yes
         nextsize: "50M"
         maxsize: "unlimited"
@@ -363,7 +363,7 @@
       local_action:
         module: oracle_tablespace
         service_name: "xepdb1"
-        user: "sys"
+        username: "sys"
         password: "password"
         mode: "sysdba"
         tablespace: "{{ item }}"
@@ -371,4 +371,26 @@
       loop:
         - "ts"
         - "ts_temp"
+
+- name: Test null
+  hosts: oracle_container
+  gather_facts: no
+  tags: "test8"
+  vars:
+    nul:
+
+  tasks:
+    - name: create tablespace
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "ts"
+        size: "1M"
+        datafiles: "/tmp/ts.dbf"
+        autoextend: yes
+        nextsize: "{{ nul }}"
+        maxsize: "{{ nul }}"
 ...

@@ -329,8 +329,10 @@ class Datafile:
 
     def needs_change_autoextend(self, prev):
         """Autoextend change when switching from off to on, and conversely, or when it's on and sizes change"""
-        return self.autoextend != prev.autoextend or \
-               self.autoextend and (not self.maxsize.__eq__(prev.maxsize) or not self.nextsize.__eq__(prev.nextsize))
+        return (self.autoextend != prev.autoextend or
+                self.autoextend and (
+                        self.maxsize is not None and not self.maxsize.__eq__(prev.maxsize) or
+                        self.nextsize is not None and not self.nextsize.__eq__(prev.nextsize)))
 
 
 class FileType:
@@ -534,7 +536,7 @@ def ensure_present(tablespace, state, read_only, datafiles, file_type, content_t
         else:
             module.exit_json(changed=False, msg="Tablespace %s already exists." % tablespace, diff=diff, ddls=ddls)
     else:  # Tablespace needs to be created
-        files_specifications = ', '.join(datafile.data_file_clause() % datafile for datafile in datafiles)
+        files_specifications = ', '.join(datafile.data_file_clause() for datafile in datafiles)
         ddl = 'create %s %s tablespace %s %s %s' % (
             file_type, content_type.create_clause(), tablespace, content_type.datafile_clause(), files_specifications)
         execute_ddl(ddl)
