@@ -401,9 +401,9 @@ def main():
         argument_spec=dict(
             oracle_home=dict(required=False, aliases=['oh']),
             hostname=dict(default='localhost'),
-            port=dict(default=1521),
+            port=dict(type='int', default=1521),
             service_name=dict(required=True, aliases=['tns']),
-            user=dict(required=False),
+            user=dict(required=False, aliases=['username']),
             password=dict(required=False, no_log=True),
             mode=dict(default='normal', choices=["normal", "sysdba"]),
             schema=dict(default=None, aliases=['name']),
