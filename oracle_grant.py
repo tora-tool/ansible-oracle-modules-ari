@@ -3,7 +3,7 @@
 
 DOCUMENTATION = '''
 ---
-module: oracle_grants
+module: oracle_grant
 short_description: Manage users/schemas in an Oracle database
 description:
     - Manage grants/privileges in an Oracle database
