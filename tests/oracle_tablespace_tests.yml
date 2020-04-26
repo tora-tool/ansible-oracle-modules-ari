@@ -393,4 +393,127 @@
         autoextend: yes
         nextsize: "{{ nul }}"
         maxsize: "{{ nul }}"
+
+- name: Defining a default tablespace
+  hosts: oracle_container
+  gather_facts: no
+  tags: "test9"
+
+  tasks:
+    - name: "permanent tablespace"
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "ts"
+        datafiles: "/tmp/ts.dbf"
+        size: "1M"
+        autoextend: yes
+
+    - name: "setting tablespace to default"
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "ts"
+        datafiles: "/tmp/ts.dbf"
+        size: "1M"
+        autoextend: yes
+        default: yes
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: "cannot drop default tablespace"
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "ts"
+        state: "absent"
+      register: _
+      failed_when: not _.failed or _.code != 12919
+
+    - name: "setting users to default"
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "users"
+        datafiles: "/opt/oracle/oradata/XE/XEPDB1/users01.dbf"
+        size: "5M"
+        autoextend: yes
+        nextsize: "1280K"
+        maxsize: "unlimited"
+        default: yes
+
+    - name: "drop ts tablespace"
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "ts"
+        state: "absent"
+
+    - name: "create default temporary tablespace"
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "ts_temp"
+        datafiles: "/tmp/ts_temp.dbf"
+        content: "temp"
+        default: yes
+        size: "5M"
+
+    - name: "cannot drop default tablespace"
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "ts_temp"
+        state: "absent"
+        content: "temp"
+      register: _
+      failed_when: not _.failed or _.code != 12906
+
+    - name: "change back default to temp"
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "temp"
+        datafiles: "/opt/oracle/oradata/XE/XEPDB1/temp01.dbf"
+        content: "temp"
+        default: yes
+        size: "5M"
+        autoextend: true
+        nextsize: "640K"
+        maxsize: "unlimited"
+
+    - name: "drop ts_temp tablespace"
+      local_action:
+        module: oracle_tablespace
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        tablespace: "ts_temp"
+        state: "absent"
+        content: "temp"
 ...

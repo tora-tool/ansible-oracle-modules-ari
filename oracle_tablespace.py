@@ -61,6 +61,14 @@ options:
         type: list
         elements: str
         aliases: ['datafile','df']
+    default:
+        description:
+            - Define if this tablespace must be set as default database tablespace.
+            - If I(default=True), the tablespace is set as the default tablespace.
+            - If I(default=False), nothing is done, even if the tablespace is set as the default tablespace in database.
+            - This option has no sense with an undo tablespace.
+        default: false
+        type: bool
     hostname:
         description:
             - Specify the host name or IP address of the database server computer.
@@ -385,6 +393,12 @@ def get_existing_tablespace(tablespace):
           " where ts.tablespace_name = :tn" \
           "   and ts.tablespace_name = df.tablespace_name(+)" \
           "   and ts.tablespace_name = tf.tablespace_name(+)"
+
+    sql_is_default = "select 1" \
+                     "  from database_properties dp" \
+                     " where property_name in ('DEFAULT_PERMANENT_TABLESPACE', 'DEFAULT_TEMP_TABLESPACE')" \
+                     "   and property_value = :tn"
+
     params = {'tn': tablespace}
 
     try:
@@ -403,11 +417,14 @@ def get_existing_tablespace(tablespace):
             diff['before']['bigfile'] = file_type.is_bigfile()
             diff['before']['content'] = content_type.content
 
+            is_default = bool(cursor.execute(sql_is_default, params).fetchone())
+            diff['before']['default'] = is_default
+
             # Get previous datafiles
             datafiles = get_existing_datafiles(tablespace)
 
             return {'state': state, 'read_only': read_only, 'file_type': file_type, 'content_type': content_type,
-                    'datafiles': datafiles}
+                    'datafiles': datafiles, 'default': is_default}
         else:
             diff['before']['state'] = 'absent'
             return None
@@ -494,7 +511,7 @@ def ensure_datafile_state(prev_tablespace, tablespace, datafiles, content_type):
     return changed
 
 
-def ensure_present(tablespace, state, read_only, datafiles, file_type, content_type):
+def ensure_present(tablespace, state, read_only, datafiles, file_type, content_type, default):
     """Create the tablespace if it doesn't exist, or alter it if it is different"""
     prev_tablespace = get_existing_tablespace(tablespace)
     diff['after']['datafiles'] = [datafile.asdict() for datafile in datafiles]
@@ -530,6 +547,12 @@ def ensure_present(tablespace, state, read_only, datafiles, file_type, content_t
             execute_ddl(ddl)
             changed = True
 
+        # Managing default tablespace
+        if default and not prev_tablespace['default']:
+            ddl = 'alter database default %s tablespace %s' % (content_type.create_clause(), tablespace)
+            execute_ddl(ddl)
+            changed = True
+
         # Nothing more to do.
         if changed:
             module.exit_json(changed=True, msg="Tablespace %s changed." % tablespace, diff=diff, ddls=ddls)
@@ -540,6 +563,11 @@ def ensure_present(tablespace, state, read_only, datafiles, file_type, content_t
         ddl = 'create %s %s tablespace %s %s %s' % (
             file_type, content_type.create_clause(), tablespace, content_type.datafile_clause(), files_specifications)
         execute_ddl(ddl)
+
+        # Managing default tablespace
+        if default:
+            ddl = 'alter database default %s tablespace %s' % (content_type.create_clause(), tablespace)
+            execute_ddl(ddl)
 
         if read_only:
             ddl = 'alter tablespace %s read only' % tablespace
@@ -571,6 +599,7 @@ def main():
             bigfile=dict(type='bool', default=False),
             content=dict(type='str', default='permanent', choices=['permanent', 'temp', 'undo']),
             datafiles=dict(type='list', default=[], aliases=['datafile', 'df']),
+            default=dict(type='bool', default=False),
             hostname=dict(type='str', default='localhost'),
             maxsize=dict(type='str', required=False, aliases=['max']),
             mode=dict(type='str', default='normal', choices=['normal', 'sysdba']),
@@ -597,6 +626,7 @@ def main():
     bigfile = module.params['bigfile']
     content = module.params['content']
     datafile_names = module.params['datafiles']
+    default = module.params['default']
     hostname = module.params['hostname']
     maxsize = module.params['maxsize']
     mode = module.params['mode']
@@ -651,13 +681,14 @@ def main():
                       'state': state,
                       'read_only': read_only,
                       'bigfile': file_type.is_bigfile(),
-                      'content': content_type.content}}
+                      'content': content_type.content,
+                      'default': default, }}
 
     ddls = []
 
     # Doing actions
     if state in ('online', 'offline'):
-        ensure_present(tablespace, state, read_only, datafiles, file_type, content_type)
+        ensure_present(tablespace, state, read_only, datafiles, file_type, content_type, default)
     elif state == 'absent':
         ensure_absent(tablespace)
 
