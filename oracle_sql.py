@@ -163,13 +163,15 @@ def execute_select(sql):
 
 def execute_statement(sql):
     """Executes a query"""
-    if not module.check_mode:
-        try:
+    try:
+        if not module.check_mode:
             cursor.execute(sql)
             statements.append(sql)
-        except cx_Oracle.DatabaseError as e:
-            error = e.args[0]
-            module.fail_json(msg=error.message, code=error.code, request=sql)
+        else:
+            statements.append('--' + sql)
+    except cx_Oracle.DatabaseError as e:
+        error = e.args[0]
+        module.fail_json(msg=error.message, code=error.code, request=sql)
 
 
 def execute_statements(script):

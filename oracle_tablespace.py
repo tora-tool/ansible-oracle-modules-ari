@@ -463,13 +463,15 @@ def get_existing_datafiles(tablespace):
 
 def execute_ddl(request):
     """Execute a DDL request if not in check_mode"""
-    if not module.check_mode:
-        try:
+    try:
+        if not module.check_mode:
             cursor.execute(request)
             ddls.append(request)
-        except cx_Oracle.DatabaseError as e:
-            error = e.args[0]
-            module.fail_json(msg=error.message, code=error.code, request=request, ddls=ddls)
+        else:
+            ddls.append('--' + request)
+    except cx_Oracle.DatabaseError as e:
+        error = e.args[0]
+        module.fail_json(msg=error.message, code=error.code, request=request, ddls=ddls)
 
 
 def ensure_datafile_state(prev_tablespace, tablespace, datafiles, content_type):
