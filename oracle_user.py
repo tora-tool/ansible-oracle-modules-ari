@@ -182,7 +182,7 @@ def create_user(module, cursor, schema, schema_password, schema_password_hash, d
         if schema_password_hash:
             sql = 'create user %s identified by values \'%s\' ' % (schema, schema_password_hash)
         else:
-            sql = 'create user %s identified by %s ' % (schema, schema_password)
+            sql = 'create user %s identified by "%s" ' % (schema, schema_password)
     elif authentication_type == 'global':
         sql = 'create user %s identified globally ' % schema
     elif authentication_type == 'external':
@@ -262,7 +262,7 @@ def modify_user(module, cursor, schema, schema_password, schema_password_hash, d
             if schema_password_hash:
                 sql += ' identified by values \'%s\'' % schema_password_hash
             elif schema_password:
-                sql += ' identified by %s ' % schema_password
+                sql += ' identified by "%s" ' % schema_password
         elif authentication_type == 'external':
             sql += ' identified externally '
             sql_get_curr_def += ' ,lower(authentication_type)'
