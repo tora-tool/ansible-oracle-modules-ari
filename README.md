@@ -51,6 +51,12 @@ The Python module `cx_Oracle` needs to be installed on the Ansible host. (`pip i
   States `present` and `absent` ensure privileges are present or absent.
   State `identical` replace privileges with the ones in parameter.
 
+#### oracle_role ####
+
+- This module manage Oracle role objects.
+- It handles creation and deletion of roles.
+- It doesn't support changing password. There's no hint to know a password was changed, so no change is made.
+
 #### oracle_sql ####
 
 - This module executes SQL queries or PL/SQL blocks.
@@ -175,12 +181,6 @@ pre-rec: cx_Oracle
 
 - Manage redo-groups and their size in RAC or single instance environments
 - NOTE: For RAC environments, the database needs to be in ARCHIVELOG mode. This is not required for SI environments.
-
-#### oracle_role ####
-
-pre-req: cx_Oracle
-
-- Manages roles in the database
 
 #### oracle_rsrc_consgroup ####
 

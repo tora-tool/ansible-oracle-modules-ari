@@ -1,0 +1,278 @@
+---
+# Run using : ansible-playbook oracle_role_tests.yml
+- name: Create and delete a role
+  hosts: oracle_container
+  gather_facts: no
+  tags: test1
+
+  tasks:
+    - name: create a role
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        state: "present"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: create again a role
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        state: "present"
+      register: _
+      failed_when: _.failed or _.changed
+
+    - name: drop a role
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        state: "absent"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: drop again a role
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        state: "absent"
+      register: _
+      failed_when: _.failed or _.changed
+
+- name: Test parameters
+  hosts: oracle_container
+  gather_facts: no
+  tags: test2
+
+  tasks:
+    - name: create with missing parameter
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        identified_method: "password"
+      register: _
+      failed_when: not _.failed
+
+    - name: create with missing parameter
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        identified_method: "package"
+      register: _
+      failed_when: not _.failed
+
+    - name: create without missing parameter
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        identified_method: "password"
+        identified_value: "bar"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: drop role
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        state: "absent"
+
+- name: Test changing identified method
+  hosts: oracle_container
+  gather_facts: no
+  tags: test3
+
+  tasks:
+    - name: create without authentication
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: change identified method
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        identified_method: "password"
+        identified_value: "bar"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: change again identified method
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: drop role
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        state: "absent"
+
+- name: Test every identified method
+  hosts: oracle_container
+  gather_facts: no
+  tags: test4
+
+  tasks:
+    - name: not identified
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+
+    - name: identified by password
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        identified_method: "password"
+        identified_value: "bar"
+
+    - name: identified by package
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        identified_method: "application"
+        identified_value: "SYS.MY_PACKAGE"
+
+    - name: identified externally
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        identified_method: "external"
+
+    - name: identified globally
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        identified_method: "global"
+      check_mode: yes  # Not available on my database
+
+    - name: drop role
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        state: "absent"
+
+- name: Test check mode
+  hosts: oracle_container
+  gather_facts: no
+  tags: test5
+
+  tasks:
+    - name: create in check mode
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+      check_mode: yes
+
+    - name: create again without check mode
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: drop role in check mode
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        state: "absent"
+      check_mode: yes
+
+    - name: drop role without check mode
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        state: "absent"
+      register: _
+      failed_when: _.failed or not _.changed
+...
