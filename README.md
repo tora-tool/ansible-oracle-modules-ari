@@ -28,7 +28,7 @@ Changes were tested with Ansible 2.8 and Python 3.
 
 ## Oracle modules for Ansible ##
 
-Initial readme can be found here : https://github.com/oravirt/ansible-oracle-modules/blob/master/README.md. 
+Initial readme can be found here : https://github.com/oravirt/ansible-oracle-modules/blob/master/README.md.
 
 I'll describe only modules I refactored or created.
 
@@ -42,6 +42,14 @@ The Python module `cx_Oracle` needs to be installed on the Ansible host. (`pip i
 
 - This module manages Oracle directory objects.
 - It can create, replace or drop directories.
+
+#### oracle_grant ####
+
+- This module manage Oracle privileges.
+- It can deal with system privileges, role privileges and object privileges (procedure, function, package, package body and directory).
+- It has 3 possible states: `present`, `absent` and `identical`.
+  States `present` and `absent` ensure privileges are present or absent.
+  State `identical` replace privileges with the ones in parameter.
 
 #### oracle_sql ####
 
@@ -104,15 +112,6 @@ pre-req: cx_Oracle
 
 - Gathers facts about Grid Infrastructure cluster configuration
 
-#### oracle_grants ####
-
-pre-req: cx_Oracle
-
-- Manages privileges for a user
-- Grants/revokes privileges
-- Handles roles/sys privileges properly. Does NOT yet handle object privs. They can be added but they are not considered while revoking privileges
-- The grants can be added as a string (dba,'select any dictionary','create any table'), or in a list (ie.g for use with with_items)
-
 #### oracle_job ####
 
 pre-req: cx_Oracle, re
@@ -167,13 +166,6 @@ pre-req: cx_Oracle
 - Creates/deletes/opens/closes the pdb
 - saves the state if you want it to. Default is yes
 - Can place the datafiles in a separate location
-
-#### oracle_privs ####
-
-pre-req: cx_Oracle, re
-
-- Manages system and object level grants
-- Object level grant support wildcards, so now it is possible to grant access to all tables in a schema and maintain it automatically!
 
 #### oracle_profile ####
 

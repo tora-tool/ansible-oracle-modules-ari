@@ -1,0 +1,663 @@
+---
+# Run using : ansible-playbook oracle_grant_tests.yml
+- name: Set up
+  hosts: oracle_container
+  gather_facts: false
+  tags: "always"
+
+  tasks:
+    - name: create u_foo user
+      local_action:
+        module: oracle_user
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        schema: "u_foo"
+        schema_password: "bar"
+
+    - name: create r_foo role
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+
+- name: Append system privileges to schema
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test1"
+
+  tasks:
+    - name: grant create session to inexistent user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "bar"
+        privileges: "create session"
+        state: "present"
+      register: _
+      failed_when: not _.failed or _.code != 1917
+
+    - name: grant create session to existent user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges: "create session"
+        state: "present"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: grant existing privilege to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges: "create session"
+        state: "present"
+      register: _
+      failed_when: _.failed or _.changed
+
+    - name: grant new privilege to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges: "create table"
+        state: "present"
+      register: _
+      failed_when: _.failed or (not _.changed and 'create table' not in _.ddls)
+
+    - name: grant existing privileges to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges:
+          - "create table"
+          - "create session"
+        state: "present"
+      register: _
+      failed_when: _.failed or _.changed
+
+    - name: grant new privileges to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges:
+          - "create synonym"
+          - "create table"
+          - "create view"
+        state: "present"
+      register: _
+      failed_when: _.failed or (not _.changed and 'create table' in _.ddls and 'create synonym' not in _.ddls and 'create view' not in _.ddls)
+
+    - name: reset user's privilege
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+
+- name: Remove system privileges to schema
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test2"
+
+  tasks:
+    - name: remove inexistent privilege from user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges: "create session"
+        state: "absent"
+      register: _
+      failed_when: _.failed or _.changed
+
+    - name: add a privilege to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges: "create session"
+        state: "present"
+
+    - name: remove this privilege from user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges: "create session"
+        state: "absent"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: add privileges to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges:
+          - "create session"
+          - "create table"
+          - "create synonym"
+          - "create view"
+        state: "present"
+
+    - name: remove this privilege from user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges:
+          - "create table"
+          - "create synonym"
+          - "create materialized view"
+        state: "absent"
+      register: _
+      failed_when: |
+        _.failed or (
+        not _.changed and
+        'create session' in _.ddls and
+        'create view' in _.ddls and
+        'create materialized view' in _.ddls and
+        'create table' not in _.ddls and
+        'create synonym' not in _.ddls)
+
+    - name: reset user's privilege
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+
+- name: Replace system privileges to schema
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test3"
+
+  tasks:
+    - name: set privileges to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges:
+          - "create session"
+          - "create table"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: set same privileges to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges:
+          - "create session"
+          - "create table"
+      register: _
+      failed_when: _.failed or _.changed
+
+    - name: set different privileges to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges:
+          - "create session"
+          - "create synonym"
+      register: _
+      failed_when: _.failed or (not _.changed and 'revoke create table' not in _.ddls and 'grant create synonym' not in _.ddls)
+
+    - name: reset user's privilege
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+
+- name: Append object privileges to schema
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test4"
+
+  tasks:
+    - name: add object privilege to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        objects_privileges:
+          dbms_random:
+            - "execute"
+        state: "present"
+      register: _
+      failed_when: _.failed or (not _.changed and 'DBMS_RANDOM' not in _.ddls)
+
+    - name: add existing object privilege to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        objects_privileges:
+          dbms_random:
+            - "execute"
+        state: "present"
+      register: _
+      failed_when: _.failed or _.changed
+
+    - name: add new object privileges to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        objects_privileges:
+          dbms_random:
+            - "execute"
+          dba_users:
+            - "select"
+            - "read"
+        state: "present"
+      register: _
+      failed_when: _.failed or (not _.changed and 'DBMS_RANDOM' in _.ddls and 'DBA_USERS' not in _.ddls)
+
+    - name: reset user's privilege
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+
+- name: Remove object privileges to schema
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test5"
+
+  tasks:
+    - name: remove inexistent privilege from user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        objects_privileges:
+          dbms_random:
+            - "execute"
+        state: "absent"
+      register: _
+      failed_when: _.failed or _.changed
+
+    - name: add a privilege to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        objects_privileges:
+          dbms_random:
+            - "execute"
+        state: "present"
+
+    - name: remove this privilege from user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        objects_privileges:
+          dbms_random:
+            - "execute"
+        state: "absent"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: add privileges to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        objects_privileges:
+          dbms_random:
+            - "execute"
+          dba_users:
+            - "select"
+            - "read"
+        state: "present"
+
+    - name: remove this privilege from user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        objects_privileges:
+          dba_users:
+            - "select"
+        state: "absent"
+      register: _
+      failed_when: |
+        _.failed or (
+        not _.changed and
+        'dbms_random' in _.ddls and
+        'dba_users' not in _.ddls and
+        'read' in _.ddls and
+        'select' not in _.ddls)
+
+    - name: reset user's privilege
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+
+- name: Replace object privileges to schema
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test6"
+
+  tasks:
+    - name: set objects privileges to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        objects_privileges:
+          dbms_random:
+            - "execute"
+          dba_users:
+            - "select"
+            - "read"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: set same privileges to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        objects_privileges:
+          dbms_random:
+            - "execute"
+          dba_users:
+            - "select"
+            - "read"
+      register: _
+      failed_when: _.failed or _.changed
+
+    - name: set different privileges to user
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        objects_privileges:
+          dbms_random:
+            - "execute"
+          dba_users:
+            - "read"
+          dba_views:
+            - "select"
+      register: _
+      failed_when: |
+        _.failed or (
+        not _.changed and
+        'revoke SELECT on SYS.DBA_USERS' not in _.ddls and
+        'grant SELECT on SYS.DBA_VIEWS' not in _.ddls and
+        'grant READ on SYS.DBA_USERS' in _.ddls)
+
+    - name: reset user's privilege
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+
+- name: Append/remove privileges to role
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test7"
+
+  tasks:
+    - name: grant to role
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "r_foo"
+        privileges: "create session"
+        objects_privileges:
+          dbms_random:
+            - "execute"
+
+    - name: grant something different to role
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "r_foo"
+        privileges: "create table"
+        objects_privileges:
+          dba_users:
+            - "read"
+
+    - name: reset role's privilege
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "r_foo"
+
+- name: Append/remove directory privileges
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test8"
+
+  tasks:
+    - name: create directory
+      local_action:
+        module: oracle_directory
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        directory_name: "IMPEXP"
+        directory_path: "/tmp"
+
+    - name: grant read,write,execute on directory IMPEXP
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "r_foo"
+        objects_privileges:
+          IMPEXP:
+            - "read"
+            - "write"
+            - "execute"
+
+    - name: drop directory
+      local_action:
+        module: oracle_directory
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        directory_name: "IMPEXP"
+        state: "absent"
+
+    - name: reset user's privilege
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+
+- name: Test check mode
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test9"
+
+  tasks:
+    - name: grant create session in check mode
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges: "create session"
+      check_mode: yes
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: grant again create session in check mode (must change again)
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+        privileges: "create session"
+      check_mode: yes
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: Remove grants (nothing to do, as nothing was added)
+      local_action:
+        module: oracle_grant
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        grantee: "u_foo"
+      check_mode: yes
+      register: _
+      failed_when: _.failed or _.changed
+
+- name: Tear down
+  hosts: oracle_container
+  gather_facts: false
+  tags: "always"
+
+  tasks:
+    - name: drop u_foo user
+      local_action:
+        module: oracle_user
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        schema: "u_foo"
+        schema_password: "bar"
+        state: "absent"
+
+    - name: drop r_foo role
+      local_action:
+        module: oracle_role
+        service_name: "xepdb1"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        role: "r_foo"
+        state: "absent"
+...
