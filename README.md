@@ -45,15 +45,24 @@ The Python module `cx_Oracle` needs to be installed on the Ansible host. (`pip i
 
 #### oracle_grant ####
 
-- This module manage Oracle privileges.
+- This module manages Oracle privileges.
 - It can deal with system privileges, role privileges and object privileges (procedure, function, package, package body and directory).
 - It has 3 possible states: `present`, `absent` and `identical`.
   States `present` and `absent` ensure privileges are present or absent.
   State `identical` replace privileges with the ones in parameter.
 
+#### oracle_pdb ####
+
+- This module manages pluggable databases (PDB) in an Oracle container database (CDB).
+- It can :
+  * create a PDB from seed, clone a PDB or plug a PDB from XML ;
+  * drop or unplug a PDB ;
+  * open or close a PDB.
+- Only a few Oracle options are available to create, drop or alter a pluggable database.
+
 #### oracle_role ####
 
-- This module manage Oracle role objects.
+- This module manages Oracle role objects.
 - It handles creation and deletion of roles.
 - It doesn't support changing password. There's no hint to know a password was changed, so no change is made.
 
@@ -163,15 +172,6 @@ and that means the database may round the requested value to the nearest multipl
 e.g sga_max_size=1500M will be rounded up to 1504 (which is 94 granules of 16MB). That will cause the displayed value to be 1504M, which has
 the effect that the next time the module is is run with a desired value of 1500M it will be changed again.
 So that is something to consider when setting parameters that affects the SGA.
-
-#### oracle_pdb ####
-
-pre-req: cx_Oracle
-
-- Manages pluggable databases in an Oracle container database
-- Creates/deletes/opens/closes the pdb
-- saves the state if you want it to. Default is yes
-- Can place the datafiles in a separate location
 
 #### oracle_profile ####
 

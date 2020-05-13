@@ -1,0 +1,417 @@
+---
+# Run using : ansible-playbook oracle_pdb_tests.yml
+- name: Test creation/deletion of PDB
+  hosts: oracle_container
+  gather_facts: no
+  tags: test1
+
+  tasks:
+    - name: drop PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "absent"
+
+    - name: create PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "closed"
+        pdb_admin_username: foo
+        pdb_admin_password: bar
+        file_name_convert:
+          "/opt/oracle/oradata/XE/pdbseed": "/tmp/xepdb2/dbf01"
+        roles: connect
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: drop PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "absent"
+      register: _
+      failed_when: _.failed or not _.changed
+
+- name: Test existence of PDB
+  hosts: oracle_container
+  gather_facts: no
+  tags: test2
+
+  tasks:
+    - name: create PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "opened"
+        pdb_admin_username: foo
+        pdb_admin_password: bar
+        file_name_convert:
+          "/opt/oracle/oradata/XE/pdbseed": "/tmp/xepdb2/dbf01"
+
+    - name: check an existing PDB is present
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "present"
+      register: _
+      failed_when: _.failed or not _.state
+
+    - name: drop PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "absent"
+
+    - name: check an inexistent PDB is absent
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB3"
+        state: "present"
+      register: _
+      failed_when: not _.failed
+
+- name: Test opening and closing of PDB
+  hosts: oracle_container
+  gather_facts: no
+  tags: test3
+
+  tasks:
+    - name: create a closed PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "closed"
+        pdb_admin_username: foo
+        pdb_admin_password: bar
+        file_name_convert:
+          "/opt/oracle/oradata/XE/pdbseed": "/tmp/xepdb2/dbf01"
+
+    - name: close PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "closed"
+      register: _
+      failed_when: _.failed or _.changed
+
+    - name: check PDB state
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "present"
+      register: _
+      failed_when: _.state != 'closed'
+
+    - name: open PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "opened"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: reopen PDB => no change
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "opened"
+      register: _
+      failed_when: _.failed or _.changed
+
+    - name: check PDB state
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "present"
+      register: _
+      failed_when: _.state != 'opened' and _.read_only
+
+    - name: close PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "closed"
+      register: _
+      failed_when: _.failed or not _.changed
+
+    - name: drop PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "absent"
+
+- name: Test clone creation
+  hosts: oracle_container
+  gather_facts: no
+  tags: test4
+
+  tasks:
+    - name: create an opened PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "opened"
+        pdb_admin_username: foo
+        pdb_admin_password: bar
+        file_name_convert:
+          "/opt/oracle/oradata/XE/pdbseed": "/tmp/xepdb2/dbf01"
+
+    - name: open PDB source in read only
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "opened"
+        read_only: yes
+
+    - name: create a clone PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XESNAP1"
+        state: "opened"
+        clone_from: "XEPDB2"
+        snapshot_copy: yes
+        file_name_convert:
+          "/tmp/xepdb2/dbf01": "/tmp/xesnap1/dbf01"
+
+    - name: drop clone PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XESNAP1"
+        state: "absent"
+
+    - name: drop source PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "absent"
+
+- name: Test unplug/plug database
+  hosts: oracle_container
+  gather_facts: no
+  tags: test5
+
+  tasks:
+    - name: create an opened PDB2
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "opened"
+        pdb_admin_username: foo
+        pdb_admin_password: bar
+        file_name_convert:
+          "/opt/oracle/oradata/XE/pdbseed": "/tmp/xepdb2/dbf01"
+
+    - name: XML file doesn't exist
+      file:
+        path: "/tmp/xepdb2.xml"
+        state: "absent"
+
+    - name: unplug PDB2
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "absent"
+        unplug_file: "/tmp/xepdb2.xml"
+
+    - name: XML file was created exists
+      file:
+        path: "/tmp/xepdb2.xml"
+        state: "file"
+
+    - name: DBF file still exists (check only one DBF)
+      file:
+        path: "/tmp/xepdb2/dbf01/system01.dbf"
+        state: "file"
+
+    - name: plug in a PDB3
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB3"
+        state: "opened"
+        plug_file: "/tmp/xepdb2.xml"
+        file_name_convert:
+          "/tmp/xepdb2/dbf01": "/tmp/xepdb3/dbf01"
+
+    - name: drop PDB3
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB3"
+        state: "absent"
+
+    - name: replug the PDB2
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "opened"
+        plug_file: "/tmp/xepdb2.xml"
+
+    - name: drop PDB2
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "absent"
+
+- name: Test exlusive options
+  hosts: oracle_container
+  gather_facts: no
+  tags: test6
+
+  tasks:
+    - name: create a PDB from seed, XML and clone
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "opened"
+        pdb_admin_username: "foo"
+        pdb_admin_password: "bar"
+        clone_from: "XEPDB1"
+        plug_file: "/tmp/xepdb2.xml"
+        file_name_convert:
+          "/opt/oracle/oradata/XE/pdbseed": "/tmp/xepdb2/dbf01"
+      register: _
+      failed_when: not _.failed
+
+- name: Test check mode
+  hosts: oracle_container
+  gather_facts: no
+  tags: test7
+
+  tasks:
+    - name: create a PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "opened"
+        pdb_admin_username: "foo"
+        pdb_admin_password: "bar"
+        file_name_convert:
+          "/opt/oracle/oradata/XE/pdbseed": "/tmp/xepdb2/dbf01"
+      check_mode: yes
+      register: _
+      failed_when: _.failed or not _.changed or _.diff['before']['state'] != 'absent'
+
+    - name: check a PDB
+      local_action:
+        module: oracle_pdb
+        service_name: "XE"
+        username: "sys"
+        password: "password"
+        mode: "sysdba"
+        pdb_name: "XEPDB2"
+        state: "present"
+      register: _
+      failed_when: not _.failed
+...
