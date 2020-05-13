@@ -71,7 +71,6 @@ oracle_parameter: hostname=remote-db-server service_name=orcl user=system passwo
 
 
 '''
-import re
 try:
     import cx_Oracle
 except ImportError:
@@ -82,14 +81,13 @@ else:
 
 # Check if the parameter exists
 def check_parameter_exists(module, mode, msg, cursor, name):
-
-
-    if not(name):
+    if not name:
         module.fail_json(msg='Error: Missing parameter name', changed=False)
         return False
 
     if name.startswith('_') and mode != 'sysdba':
-        module.fail_json(msg='You need sysdba privs to verify underscore parameters (%s), mode: (%s)' % (name, mode), changed=False)
+        module.fail_json(msg='You need sysdba privs to verify underscore parameters (%s), mode: (%s)' % (name, mode),
+                         changed=False)
 
     elif name.startswith('_') and mode == 'sysdba':
         sql = 'select lower(ksppinm) from sys.x$ksppi where ksppinm = lower(\'%s\')' % name
@@ -97,14 +95,13 @@ def check_parameter_exists(module, mode, msg, cursor, name):
     else:
         sql = 'select lower(name) from v$parameter where name = lower(\'%s\')' % name
 
-
     try:
-            cursor.execute(sql)
-            result = (cursor.fetchone())
+        cursor.execute(sql)
+        result = (cursor.fetchone())
     except cx_Oracle.DatabaseError as exc:
-            error, = exc.args
-            msg[0] = error.message+ 'sql: ' + sql
-            return False
+        error, = exc.args
+        msg[0] = error.message + 'sql: ' + sql
+        return False
 
     if result > 0:
         return True
@@ -113,20 +110,15 @@ def check_parameter_exists(module, mode, msg, cursor, name):
         return False
 
 
-
-
 def modify_parameter(module, mode, msg, cursor, name, value, scope, sid):
-
-
-
     contains = re.compile(r'[?*$%#()!\s,._/=+-]')
-    starters = ('+','_','"','"_','/')
+    starters = ('+', '_', '"', '"_', '/')
 
-    if not(name) or not (value) or name is None or value is None:
-        module.fail_json(msg='Error: Missing parameter name or value. (If value is supposed to be an empty string, make sure it\'s quoted)', changed=False)
+    if not name or not value or name is None or value is None:
+        module.fail_json(
+            msg='Error: Missing parameter name or value. (If value is supposed to be an empty string, make sure it\'s quoted)',
+            changed=False)
         return False
-
-
 
     currval = get_curr_value(module, mode, msg, cursor, name, scope)
 
@@ -135,7 +127,7 @@ def modify_parameter(module, mode, msg, cursor, name, value, scope, sid):
         return True
 
     if module.check_mode:
-        msg = '%s will be changed, new: %s, old: %s' % (name,value,currval.upper())
+        msg = '%s will be changed, new: %s, old: %s' % (name, value, currval.upper())
         module.exit_json(msg=msg, changed=True)
 
     if name.startswith(starters):
@@ -156,30 +148,30 @@ def modify_parameter(module, mode, msg, cursor, name, value, scope, sid):
     msg[0] = 'The parameter (%s) has been changed successfully, new: %s, old: %s' % (name, value, currval)
     return True
 
-def quote_value(value):
 
+def quote_value(value):
     if len(value) > 0:
-        return "'%s'" % (value)
+        return "'%s'" % value
     else:
         return value
 
 
 def quote_name(name):
-
     if len(name) > 0:
-        return """\"%s\"""" % (name)
+        return """\"%s\"""" % name
     else:
         return name
 
+
 def clean_string(item):
-    item = item.replace("""\"""","")
+    item = item.replace("""\"""", "")
 
     return item
 
-def reset_parameter(module, mode, msg, cursor, name, value, scope, sid):
 
-    starters = ('+','_','"','"_')
-    if not(name):
+def reset_parameter(module, mode, msg, cursor, name, value, scope, sid):
+    starters = ('+', '_', '"', '"_')
+    if not name:
         module.fail_json(msg='Error: Missing parameter name', changed=False)
         return False
 
@@ -189,7 +181,7 @@ def reset_parameter(module, mode, msg, cursor, name, value, scope, sid):
     if name.startswith(starters):
         name = quote_name(name)
 
-    sql = 'alter system reset %s scope=spfile sid=\'%s\'' % (name,sid)
+    sql = 'alter system reset %s scope=spfile sid=\'%s\'' % (name, sid)
 
     try:
         cursor.execute(sql)
@@ -197,7 +189,7 @@ def reset_parameter(module, mode, msg, cursor, name, value, scope, sid):
         error, = exc.args
         if error.code == 32010:
             name = clean_string(name)
-            msg[0] = 'The parameter (%s) is already set to its default value' % (name)
+            msg[0] = 'The parameter (%s) is already set to its default value' % name
             module.exit_json(msg=msg[0], changed=False)
             return True
 
@@ -205,12 +197,11 @@ def reset_parameter(module, mode, msg, cursor, name, value, scope, sid):
         return False
 
     name = clean_string(name)
-    msg[0] = 'The parameter (%s) has been reset to its default value' % (name)
+    msg[0] = 'The parameter (%s) has been reset to its default value' % name
     return True
 
 
 def get_curr_value(module, mode, msg, cursor, name, scope):
-
     if scope == 'spfile':
         parameter_source = 'v$spparameter'
     else:
@@ -218,7 +209,8 @@ def get_curr_value(module, mode, msg, cursor, name, scope):
 
     if mode == 'sysdba':
         name = clean_string(name)
-        sql = 'select lower(y.ksppstdvl) from sys.x$ksppi x, sys.x$ksppcv y where x.indx = y.indx and x.ksppinm = lower(\'%s\')' % (name)
+        sql = 'select lower(y.ksppstdvl) from sys.x$ksppi x, sys.x$ksppcv y where x.indx = y.indx and x.ksppinm = lower(\'%s\')' % (
+            name)
     else:
         sql = 'select lower(display_value) from %s where name = lower(\'%s\')' % (parameter_source, name)
 
@@ -233,26 +225,24 @@ def get_curr_value(module, mode, msg, cursor, name, scope):
         module.fail_json(msg=msg[0], changed=False)
         return False
 
-
     return result
 
 
 def main():
-
     msg = ['']
     module = AnsibleModule(
-        argument_spec = dict(
-            hostname      = dict(default='localhost'),
-            port          = dict(default=1521),
-            service_name  = dict(required=True),
-            user          = dict(required=False),
-            password      = dict(required=False, no_log=True),
-            mode          = dict(default='normal', choices=["normal","sysdba"]),
-            name          = dict(default=None, aliases = ['parameter']),
-            value         = dict(default=None),
-            state         = dict(default="present", choices=["present", "absent","reset"]),
-            scope         = dict(default="both", choices=["both", "spfile", "memory"]),
-            sid           = dict(default="*"),
+        argument_spec=dict(
+            hostname=dict(default='localhost'),
+            port=dict(default=1521),
+            service_name=dict(required=True),
+            user=dict(required=False),
+            password=dict(required=False, no_log=True),
+            mode=dict(default='normal', choices=["normal", "sysdba"]),
+            name=dict(default=None, aliases=['parameter']),
+            value=dict(default=None),
+            state=dict(default="present", choices=["present", "absent", "reset"]),
+            scope=dict(default="both", choices=["both", "spfile", "memory"]),
+            sid=dict(default="*"),
         ),
         supports_check_mode=True
     )
@@ -269,15 +259,14 @@ def main():
     scope = module.params["scope"]
     sid = module.params["sid"]
 
-
-
-
     if not cx_oracle_exists:
-        module.fail_json(msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+        module.fail_json(
+            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
 
     wallet_connect = '/@%s' % service_name
     try:
-        if (not user and not password ): # If neither user or password is supplied, the use of an oracle wallet is assumed
+        if (
+                not user and not password):  # If neither user or password is supplied, the use of an oracle wallet is assumed
             if mode == 'sysdba':
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
@@ -285,7 +274,7 @@ def main():
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect)
 
-        elif (user and password ):
+        elif user and password:
             if mode == 'sysdba':
                 dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
                 connect = dsn
@@ -295,7 +284,7 @@ def main():
                 connect = dsn
                 conn = cx_Oracle.connect(user, password, dsn)
 
-        elif (not(user) or not(password)):
+        elif not user or not password:
             module.fail_json(msg='Missing username or password for cx_Oracle')
 
     except cx_Oracle.DatabaseError as exc:
@@ -323,15 +312,10 @@ def main():
         else:
             module.fail_json(msg=msg[0], changed=False)
 
-
-
     module.exit_json(msg=msg[0], changed=False)
 
 
-
-
-
-
 from ansible.module_utils.basic import *
+
 if __name__ == '__main__':
     main()

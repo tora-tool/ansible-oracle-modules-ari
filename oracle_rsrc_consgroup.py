@@ -194,11 +194,12 @@ except ImportError:
 else:
     cx_oracle_exists = True
 
+
 def query_existing(name):
     cgname = name.upper()
     c = conn.cursor()
     c.execute("SELECT mgmt_method, comments, category FROM dba_rsrc_consumer_groups WHERE consumer_group = :name",
-        {"name": cgname})
+              {"name": cgname})
     result = c.fetchone()
     if c.rowcount > 0:
         grants = set()
@@ -207,13 +208,17 @@ def query_existing(name):
         for row in res:
             grants.add(row[0])
         mappings = {}
-        c.execute("SELECT attribute, LISTAGG(value,':') WITHIN GROUP (ORDER BY value) FROM dba_rsrc_group_mappings WHERE consumer_group = :name GROUP BY attribute", {"name": cgname})
+        c.execute(
+            "SELECT attribute, LISTAGG(value,':') WITHIN GROUP (ORDER BY value) FROM dba_rsrc_group_mappings WHERE consumer_group = :name GROUP BY attribute",
+            {"name": cgname})
         res = c.fetchall()
         for row in res:
             mappings[row[0]] = set(row[1].split(":"))
-        return {"exists": True, "mgmt_mth": result[0], "comments": result[1], "category": result[2], "grants": grants, "mappings": mappings}
+        return {"exists": True, "mgmt_mth": result[0], "comments": result[1], "category": result[2], "grants": grants,
+                "mappings": mappings}
     else:
         return {"exists": False}
+
 
 def profile_list_to_users(profiles):
     pusers = []
@@ -226,6 +231,7 @@ def profile_list_to_users(profiles):
     c.close()
     return pusers
 
+
 def new_grants_list(users, profiles):
     s = set()
     # Return the list of users and roles that actually exist
@@ -233,7 +239,9 @@ def new_grants_list(users, profiles):
         pusers = []
         inlist = [":%i" % k for k in range(len(users))]
         c = conn.cursor()
-        c.execute("SELECT username FROM (SELECT username FROM dba_users UNION ALL SELECT role FROM dba_roles) WHERE username IN (%s)" % ",".join(inlist), [p.upper() for p in users])
+        c.execute(
+            "SELECT username FROM (SELECT username FROM dba_users UNION ALL SELECT role FROM dba_roles) WHERE username IN (%s)" % ",".join(
+                inlist), [p.upper() for p in users])
         res = c.fetchall()
         for row in res:
             pusers.append(row[0])
@@ -243,6 +251,7 @@ def new_grants_list(users, profiles):
     if profiles:
         s.update(profile_list_to_users(profiles))
     return s
+
 
 def new_mappings_dict():
     s = {}
@@ -257,43 +266,45 @@ def new_mappings_dict():
         del s["ORACLE_USER_PROFILE"]
     return s
 
+
 # Ansible code
 def main():
     global lconn, conn, msg, module
     msg = []
     module = AnsibleModule(
-        argument_spec = dict(
-            hostname      = dict(default='localhost'),
-            port          = dict(default=1521, type='int'),
-            service_name  = dict(required=True),
-            user          = dict(required=False),
-            password      = dict(required=False),
-            mode          = dict(default='normal', choices=["normal","sysdba"]),
-            state         = dict(default="present", choices=["present", "absent"]),
-            name          = dict(required=True),
-            mgmt_mth      = dict(default='round-robin'),
-            category      = dict(default='other'),
-            comments      = dict(required=False),
-            map_client_id = dict(required=False, type='list'),
-            map_client_machine = dict(required=False, type='list'),
-            map_client_os_user = dict(required=False, type='list'),
-            map_client_program = dict(required=False, type='list'),
-            map_module_name = dict(required=False, type='list'),
-            map_module_name_action = dict(required=False, type='list'),
-            map_oracle_function = dict(required=False, type='list'),
-            map_oracle_user = dict(required=False, type='list'),
-            map_oracle_user_profile = dict(required=False, type='list'),
-            map_service_module = dict(required=False, type='list'),
-            map_service_module_action = dict(required=False, type='list'),
-            map_service_name = dict(required=False, type='list'),
-            grant_name    = dict(required=False, type='list', aliases=['grant','grant_user','grant_role','grants']),
-            grant_user_profile = dict(required=False, type='list')
+        argument_spec=dict(
+            hostname=dict(default='localhost'),
+            port=dict(default=1521, type='int'),
+            service_name=dict(required=True),
+            user=dict(required=False),
+            password=dict(required=False),
+            mode=dict(default='normal', choices=["normal", "sysdba"]),
+            state=dict(default="present", choices=["present", "absent"]),
+            name=dict(required=True),
+            mgmt_mth=dict(default='round-robin'),
+            category=dict(default='other'),
+            comments=dict(required=False),
+            map_client_id=dict(required=False, type='list'),
+            map_client_machine=dict(required=False, type='list'),
+            map_client_os_user=dict(required=False, type='list'),
+            map_client_program=dict(required=False, type='list'),
+            map_module_name=dict(required=False, type='list'),
+            map_module_name_action=dict(required=False, type='list'),
+            map_oracle_function=dict(required=False, type='list'),
+            map_oracle_user=dict(required=False, type='list'),
+            map_oracle_user_profile=dict(required=False, type='list'),
+            map_service_module=dict(required=False, type='list'),
+            map_service_module_action=dict(required=False, type='list'),
+            map_service_name=dict(required=False, type='list'),
+            grant_name=dict(required=False, type='list', aliases=['grant', 'grant_user', 'grant_role', 'grants']),
+            grant_user_profile=dict(required=False, type='list')
         ),
         supports_check_mode=True
     )
     # Check for required modules
     if not cx_oracle_exists:
-        module.fail_json(msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+        module.fail_json(
+            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
     # Check input parameters
     # Connect to database
     hostname = module.params["hostname"]
@@ -304,7 +315,8 @@ def main():
     mode = module.params["mode"]
     wallet_connect = '/@%s' % service_name
     try:
-        if (not user and not password ): # If neither user or password is supplied, the use of an oracle wallet is assumed
+        if (
+                not user and not password):  # If neither user or password is supplied, the use of an oracle wallet is assumed
             if mode == 'sysdba':
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
@@ -312,7 +324,7 @@ def main():
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect)
 
-        elif (user and password ):
+        elif user and password:
             if mode == 'sysdba':
                 dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
                 connect = dsn
@@ -322,7 +334,7 @@ def main():
                 connect = dsn
                 conn = cx_Oracle.connect(user, password, dsn)
 
-        elif (not(user) or not(password)):
+        elif not user or not password:
             module.fail_json(msg='Missing username or password for cx_Oracle')
 
     except cx_Oracle.DatabaseError as exc:
@@ -342,8 +354,10 @@ def main():
         new_mappings = new_mappings_dict()
     if result['exists'] and module.params['state'] == "present":
         # Check attributes and modify if needed
-        if ((result['comments'] != module.params['comments']) or (result['mgmt_mth'] != module.params['mgmt_mth'].upper()) or
-                (result['category'] != module.params['category'].upper()) or (new_grants != result['grants']) or (new_mappings != result['mappings'])):
+        if ((result['comments'] != module.params['comments']) or (
+                result['mgmt_mth'] != module.params['mgmt_mth'].upper()) or
+                (result['category'] != module.params['category'].upper()) or (new_grants != result['grants']) or (
+                        new_mappings != result['mappings'])):
             c = conn.cursor()
             added_grants = list(new_grants - result['grants'])
             msg.append("Added grants: %s" % str(added_grants))
@@ -365,7 +379,7 @@ def main():
             for map_attr in new_mappings.keys():
                 s = new_mappings[map_attr]
                 t = result['mappings'][map_attr] if map_attr in result['mappings'] else set()
-                added_maps[map_attr] = s-t
+                added_maps[map_attr] = s - t
                 for map_value in added_maps[map_attr]:
                     c.execute("""
                     BEGIN
@@ -377,7 +391,7 @@ def main():
             for map_attr in result['mappings'].keys():
                 s = result['mappings'][map_attr]
                 t = new_mappings[map_attr] if map_attr in new_mappings else set()
-                removed_maps[map_attr] = s-t
+                removed_maps[map_attr] = s - t
                 for map_value in removed_maps[map_attr]:
                     c.execute("""
                     BEGIN
@@ -474,5 +488,6 @@ def main():
 
 
 from ansible.module_utils.basic import *
+
 if __name__ == '__main__':
     main()

@@ -1,6 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from ansible.module_utils.basic import *
+
+try:
+    import cx_Oracle
+except ImportError:
+    cx_oracle_exists = False
+else:
+    cx_oracle_exists = True
+
 DOCUMENTATION = '''
 ---
 module: oracle_jobschedule
@@ -98,18 +107,11 @@ EXAMPLES = '''
       environment: "{{ oracle_env }}"
 '''
 
-import re
-
-try:
-    import cx_Oracle
-except ImportError:
-    cx_oracle_exists = False
-else:
-    cx_oracle_exists = True
 
 def query_existing(owner, name):
     c = conn.cursor()
-    c.execute("SELECT repeat_interval, comments FROM all_scheduler_schedules WHERE owner = :owner AND schedule_name = :name",
+    c.execute(
+        "SELECT repeat_interval, comments FROM all_scheduler_schedules WHERE owner = :owner AND schedule_name = :name",
         {"owner": owner, "name": name})
     result = c.fetchone()
     if c.rowcount > 0:
@@ -117,31 +119,34 @@ def query_existing(owner, name):
     else:
         return {"exists": False}
 
+
 # Ansible code
 def main():
     global lconn, conn, msg, module
     msg = ['']
     module = AnsibleModule(
-        argument_spec = dict(
-            hostname      = dict(default='localhost'),
-            port          = dict(default=1521, type='int'),
-            service_name  = dict(required=True),
-            user          = dict(required=False),
-            password      = dict(required=False),
-            mode          = dict(default='normal', choices=["normal","sysdba"]),
-            state         = dict(default="present", choices=["present", "absent"]),
-            name          = dict(required=True),
-            repeat_interval = dict(required=True, aliases=['interval']),
-            comments      = dict(required=False),
-            convert_to_upper = dict(default=True, type='bool')
+        argument_spec=dict(
+            hostname=dict(default='localhost'),
+            port=dict(default=1521, type='int'),
+            service_name=dict(required=True),
+            user=dict(required=False),
+            password=dict(required=False),
+            mode=dict(default='normal', choices=["normal", "sysdba"]),
+            state=dict(default="present", choices=["present", "absent"]),
+            name=dict(required=True),
+            repeat_interval=dict(required=True, aliases=['interval']),
+            comments=dict(required=False),
+            convert_to_upper=dict(default=True, type='bool')
         ),
         supports_check_mode=True
     )
     # Check for required modules
     if not cx_oracle_exists:
-        module.fail_json(msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+        module.fail_json(
+            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick."
+                " If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
     # Check input parameters
-    re_name = re.compile("^[A-Za-z0-9_\$#]+\.[A-Za-z0-9_\$#]+$")
+    re_name = re.compile(r"^[A-Za-z0-9_$#]+\.[A-Za-z0-9_$#]+$")
     if not re_name.match(module.params['name']):
         module.fail_json(msg="Invalid schedule name")
     job_fullname = module.params['name'].upper() if module.params['convert_to_upper'] else module.params['name']
@@ -158,7 +163,7 @@ def main():
     mode = module.params["mode"]
     wallet_connect = '/@%s' % service_name
     try:
-        if (not user and not password ): # If neither user or password is supplied, the use of an oracle wallet is assumed
+        if not user and not password:  # If neither user or password is supplied, the use of an oracle wallet is assumed
             if mode == 'sysdba':
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
@@ -166,7 +171,7 @@ def main():
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect)
 
-        elif (user and password ):
+        elif user and password:
             if mode == 'sysdba':
                 dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
                 connect = dsn
@@ -176,7 +181,7 @@ def main():
                 connect = dsn
                 conn = cx_Oracle.connect(user, password, dsn)
 
-        elif (not(user) or not(password)):
+        elif not user or not password:
             module.fail_json(msg='Missing username or password for cx_Oracle')
 
     except cx_Oracle.DatabaseError as exc:
@@ -189,12 +194,13 @@ def main():
     if module.check_mode:
         module.exit_json(changed=False)
     #
-    #c = conn.cursor()
+    # c = conn.cursor()
     result_changed = False
     result = query_existing(job_owner, job_name)
     if result['exists'] and module.params['state'] == "present":
         # Check attributes and modify if needed
-        if (result['comments'] != module.params['comments']) or (result['repeat_interval'] != module.params['repeat_interval']):
+        if (result['comments'] != module.params['comments']) or (
+                result['repeat_interval'] != module.params['repeat_interval']):
             c = conn.cursor()
             c.execute("""
             DECLARE
@@ -240,6 +246,5 @@ def main():
     module.exit_json(msg=", ".join(msg), changed=result_changed)
 
 
-from ansible.module_utils.basic import *
 if __name__ == '__main__':
     main()

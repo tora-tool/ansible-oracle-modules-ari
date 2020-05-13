@@ -198,8 +198,6 @@ EXAMPLES = '''
       environment: "{{ oracle_env }}"
 '''
 
-import re
-
 try:
     import cx_Oracle
 except ImportError:
@@ -207,18 +205,21 @@ except ImportError:
 else:
     cx_oracle_exists = True
 
+
 def query_existing(job_owner, job_name):
     c = conn.cursor()
     c.execute("""SELECT job_style, program_owner, program_name, job_type, job_action, number_of_arguments, schedule_owner, schedule_name, schedule_type,
         repeat_interval, job_class, enabled, restartable, state, logging_level, instance_stickiness, destination_owner, destination, credential_owner,
         credential_name, comments, auto_drop
         FROM all_scheduler_jobs j WHERE owner = :owner AND job_name = :name""",
-        {"owner": job_owner.upper(), "name": job_name.upper()})
+              {"owner": job_owner.upper(), "name": job_name.upper()})
     result = c.fetchone()
     if c.rowcount > 0:
         args = []
         if result[5] > 0:
-            c.execute("SELECT value FROM all_scheduler_job_args WHERE owner = :owner AND job_name = :name ORDER BY argument_position", {"owner": job_owner.upper(), "name": job_name.upper()})
+            c.execute(
+                "SELECT value FROM all_scheduler_job_args WHERE owner = :owner AND job_name = :name ORDER BY argument_position",
+                {"owner": job_owner.upper(), "name": job_name.upper()})
             res = c.fetchall()
             for row in res:
                 args.append(row[0])
@@ -246,27 +247,29 @@ def query_existing(job_owner, job_name):
     else:
         return {"exists": False}
 
+
 def create_job():
     c = conn.cursor()
-    var_args = c.arrayvar(cx_Oracle.STRING, [] if module.params['job_arguments'] is None else module.params['job_arguments'])
+    var_args = c.arrayvar(cx_Oracle.STRING,
+                          [] if module.params['job_arguments'] is None else module.params['job_arguments'])
     # Bild the right CREATE_JOB command
     job_sql = "job_name=>v_name,comments=>v_comments,auto_drop=>v_auto_drop"
     if module.params['job_class']:
-        job_sql+= ",job_class=>v_job_class"
+        job_sql += ",job_class=>v_job_class"
     if module.params['program_name']:
-        job_sql+= ",program_name=>v_program_name"
+        job_sql += ",program_name=>v_program_name"
         if module.params['lightweight']:
-            job_sql+= ",job_style=>v_job_style"
+            job_sql += ",job_style=>v_job_style"
     else:
-        job_sql+= ",job_type=>v_job_type,job_action=>v_job_action,number_of_arguments=>v_num_args"
+        job_sql += ",job_type=>v_job_type,job_action=>v_job_action,number_of_arguments=>v_num_args"
     if module.params['schedule_name']:
-        job_sql+= ",schedule_name=>v_schedule_name"
+        job_sql += ",schedule_name=>v_schedule_name"
     else:
-        job_sql+= ",repeat_interval=>v_repeat_interval"
+        job_sql += ",repeat_interval=>v_repeat_interval"
     if module.params['credential']:
-        job_sql+= ",credential_name=>v_cred"
+        job_sql += ",credential_name=>v_cred"
     if module.params['destination']:
-        job_sql+= ",destination_name=>v_dest"
+        job_sql += ",destination_name=>v_dest"
     c.execute("""
         DECLARE
             TYPE str_array IS TABLE OF VARCHAR2(200) INDEX BY BINARY_INTEGER;
@@ -328,73 +331,79 @@ def create_job():
                 DBMS_SCHEDULER.ENABLE(v_name);
             END IF;
         END;""" % job_sql, {
-            "var_name": job_fullname,
-            "var_job_type": module.params['job_type'],
-            "var_job_action": module.params['job_action'],
-            "var_job_style": 'LIGHTWEIGHT' if module.params['lightweight'] else 'REGULAR',
-            "var_job_class": module.params['job_class'],
-            "var_credential": module.params['credential'],
-            "var_destination": module.params['destination'],
-            "var_restartable": 1 if module.params['restartable'] else 0,
-            "var_repeat_interval": module.params['repeat_interval'],
-            "var_logging_level": module.params['logging_level'],
-            "var_program_name": module.params['program_name'],
-            "var_schedule_name": module.params['schedule_name'],
-            "var_comments": module.params['comments'],
-            "var_enabled": 1 if module.params['enabled'] else 0,
-            "var_auto_drop": 1 if module.params['auto_drop'] else 0,
-            "var_args": var_args
-        })
+        "var_name": job_fullname,
+        "var_job_type": module.params['job_type'],
+        "var_job_action": module.params['job_action'],
+        "var_job_style": 'LIGHTWEIGHT' if module.params['lightweight'] else 'REGULAR',
+        "var_job_class": module.params['job_class'],
+        "var_credential": module.params['credential'],
+        "var_destination": module.params['destination'],
+        "var_restartable": 1 if module.params['restartable'] else 0,
+        "var_repeat_interval": module.params['repeat_interval'],
+        "var_logging_level": module.params['logging_level'],
+        "var_program_name": module.params['program_name'],
+        "var_schedule_name": module.params['schedule_name'],
+        "var_comments": module.params['comments'],
+        "var_enabled": 1 if module.params['enabled'] else 0,
+        "var_auto_drop": 1 if module.params['auto_drop'] else 0,
+        "var_args": var_args
+    })
+
 
 def drop_job(job_fullname):
     c = conn.cursor()
     c.execute("BEGIN DBMS_SCHEDULER.DROP_JOB(:name); END;", {"name": job_fullname})
 
+
 def compare_with_owner(value1, value2, owner):
     if value1 is None or value2 is None:
         return value1 != value2
     else:
-        return (value1 != value2.upper() and value1 != "%s.%s" % (owner, value2.upper()))
+        return value1 != value2.upper() and value1 != "%s.%s" % (owner, value2.upper())
+
 
 # Ansible code
 def main():
     global lconn, conn, lparam, module, job_fullname
     msg = ['']
     module = AnsibleModule(
-        argument_spec = dict(
-            hostname      = dict(default='localhost'),
-            port          = dict(default=1521, type='int'),
-            service_name  = dict(required=True),
-            user          = dict(required=False),
-            password      = dict(required=False),
-            mode          = dict(default='normal', choices=["normal","sysdba"]),
-            state         = dict(default="present", choices=["present", "absent"]),
-            enabled       = dict(default=True, type='bool'),
-            job_name      = dict(required=True, aliases=["name"]),
-            job_class     = dict(default='DEFAULT_JOB_CLASS', aliases=["class"]),
-            job_type      = dict(default="plsql_block", choices=["plsql_block","stored_procedure","executable","external_script","sql_script","backup_script"], aliases=["type"]),
-            job_action    = dict(required=False, aliases=["action"]),
-            job_arguments = dict(required=False, type='list', aliases=["arguments"]),
-            lightweight   = dict(default=False, type='bool'),
-            credential    = dict(required=False),
-            destination   = dict(required=False),
-            restartable   = dict(default=False, type='bool'),
-            repeat_interval = dict(required=False),
-            logging_level = dict(required=False, choices=["off","runs","failed runs","full"]),
-            program_name  = dict(required=False),
-            schedule_name = dict(required=False),
-            comments      = dict(required=False),
-            auto_drop     = dict(default=False, type='bool'),
-            convert_to_upper = dict(default=True, type='bool')
+        argument_spec=dict(
+            hostname=dict(default='localhost'),
+            port=dict(default=1521, type='int'),
+            service_name=dict(required=True),
+            user=dict(required=False),
+            password=dict(required=False),
+            mode=dict(default='normal', choices=["normal", "sysdba"]),
+            state=dict(default="present", choices=["present", "absent"]),
+            enabled=dict(default=True, type='bool'),
+            job_name=dict(required=True, aliases=["name"]),
+            job_class=dict(default='DEFAULT_JOB_CLASS', aliases=["class"]),
+            job_type=dict(default="plsql_block",
+                          choices=["plsql_block", "stored_procedure", "executable", "external_script", "sql_script",
+                                   "backup_script"], aliases=["type"]),
+            job_action=dict(required=False, aliases=["action"]),
+            job_arguments=dict(required=False, type='list', aliases=["arguments"]),
+            lightweight=dict(default=False, type='bool'),
+            credential=dict(required=False),
+            destination=dict(required=False),
+            restartable=dict(default=False, type='bool'),
+            repeat_interval=dict(required=False),
+            logging_level=dict(required=False, choices=["off", "runs", "failed runs", "full"]),
+            program_name=dict(required=False),
+            schedule_name=dict(required=False),
+            comments=dict(required=False),
+            auto_drop=dict(default=False, type='bool'),
+            convert_to_upper=dict(default=True, type='bool')
         ),
         supports_check_mode=True,
-        mutually_exclusive=[['schedule_name','repeat_interval'],['program_name','job_action']]
+        mutually_exclusive=[['schedule_name', 'repeat_interval'], ['program_name', 'job_action']]
     )
     # Check for required modules
     if not cx_oracle_exists:
-        module.fail_json(msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+        module.fail_json(
+            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
     # Check input parameters
-    re_name = re.compile("^[A-Za-z0-9_\$#]+\.[A-Za-z0-9_\$#]+$")
+    re_name = re.compile("^[A-Za-z0-9_$#]+\.[A-Za-z0-9_$#]+$")
     if not re_name.match(module.params['job_name']):
         module.fail_json(msg="Invalid job name")
     job_fullname = module.params['job_name'].upper() if module.params['convert_to_upper'] else module.params['job_name']
@@ -421,7 +430,8 @@ def main():
     mode = module.params["mode"]
     wallet_connect = '/@%s' % service_name
     try:
-        if (not user and not password ): # If neither user or password is supplied, the use of an oracle wallet is assumed
+        if (
+                not user and not password):  # If neither user or password is supplied, the use of an oracle wallet is assumed
             if mode == 'sysdba':
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
@@ -429,7 +439,7 @@ def main():
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect)
 
-        elif (user and password ):
+        elif user and password:
             if mode == 'sysdba':
                 dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
                 connect = dsn
@@ -439,7 +449,7 @@ def main():
                 connect = dsn
                 conn = cx_Oracle.connect(user, password, dsn)
 
-        elif (not(user) or not(password)):
+        elif not user or not password:
             module.fail_json(msg='Missing username or password for cx_Oracle')
 
     except cx_Oracle.DatabaseError as exc:
@@ -465,7 +475,7 @@ def main():
         changed = True
     elif result['exists'] and module.params['state'] == 'present':
         # Modify job
-        if (    result['job_class'] != module.params['job_class'] or
+        if (result['job_class'] != module.params['job_class'] or
                 result['job_type'] != module.params['job_type'].upper() or
                 result['job_action'] != module.params['job_action'] or
                 result['repeat_interval'] != module.params['repeat_interval'] or
@@ -479,7 +489,7 @@ def main():
                 compare_with_owner(result['destination'], module.params['destination'], job_owner) or
                 compare_with_owner(result['program_name'], module.params['program_name'], job_owner) or
                 compare_with_owner(result['schedule_name'], module.params['schedule_name'], job_owner) or
-                compare_with_owner(result['credential'], module.params['credential'], job_owner) ):
+                compare_with_owner(result['credential'], module.params['credential'], job_owner)):
             # Actually drop the job and recreate it
             drop_job(job_fullname)
             create_job()
@@ -489,5 +499,6 @@ def main():
 
 
 from ansible.module_utils.basic import *
+
 if __name__ == '__main__':
     main()

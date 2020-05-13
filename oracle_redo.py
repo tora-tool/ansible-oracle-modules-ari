@@ -102,25 +102,25 @@ except ImportError:
 else:
     cx_oracle_exists = True
 
+
 # Ansible code
 def main():
     global lconn, conn, msg, module
     msg = ['']
     module = AnsibleModule(
-        argument_spec = dict(
-            hostname      = dict(default='localhost'),
-            port          = dict(default=1521, type='int'),
-            service_name  = dict(required=True),
-            user          = dict(required=False),
-            password      = dict(required=False, no_log=True),
-            mode          = dict(default='normal', choices=["normal","sysdba"]),
-            size          = dict(required=True),
-            groups        = dict(required=True)
-        #     threads       = dict(default=1)
+        argument_spec=dict(
+            hostname=dict(default='localhost'),
+            port=dict(default=1521, type='int'),
+            service_name=dict(required=True),
+            user=dict(required=False),
+            password=dict(required=False, no_log=True),
+            mode=dict(default='normal', choices=["normal", "sysdba"]),
+            size=dict(required=True),
+            groups=dict(required=True)
+            #     threads       = dict(default=1)
         ),
 
     )
-
 
     hostname = module.params["hostname"]
     port = module.params["port"]
@@ -134,12 +134,13 @@ def main():
 
     # Check for required modules
     if not cx_oracle_exists:
-        module.fail_json(msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
-
+        module.fail_json(
+            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
 
     wallet_connect = '/@%s' % service_name
     try:
-        if (not user and not password ): # If neither user or password is supplied, the use of an oracle wallet is assumed
+        if (
+                not user and not password):  # If neither user or password is supplied, the use of an oracle wallet is assumed
             if mode == 'sysdba':
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
@@ -147,7 +148,7 @@ def main():
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect)
 
-        elif (user and password ):
+        elif user and password:
             if mode == 'sysdba':
                 dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
                 connect = dsn
@@ -157,7 +158,7 @@ def main():
                 connect = dsn
                 conn = cx_Oracle.connect(user, password, dsn)
 
-        elif (not(user) or not(password)):
+        elif not user or not password:
             module.fail_json(msg='Missing username or password for cx_Oracle')
 
     except cx_Oracle.DatabaseError as exc:
@@ -170,7 +171,7 @@ def main():
     #
 
     if not (size.endswith('M') or size.endswith('G') or size.endswith('T')):
-        msg = 'You need to suffix the size with (M,G or T), i.e: %sM/%sG/%sT' % (size,size,size)
+        msg = 'You need to suffix the size with (M,G or T), i.e: %sM/%sG/%sT' % (size, size, size)
         module.fail_json(msg=msg, changed=False)
 
     redosql = """
@@ -319,7 +320,6 @@ def main():
        END;
     """
 
-
     cur = conn.cursor()
 
     try:
@@ -328,30 +328,29 @@ def main():
         v_size_msg = cur.var(cx_Oracle.STRING)
         v_group_msg = cur.var(cx_Oracle.STRING)
         cur.execute(redosql,
-            {'redosize': size, 'redogroups': groups , 'o_size_changed': v_size_changed, 'o_group_changed': v_group_changed, 'o_size_msg': v_size_msg, 'o_group_msg': v_group_msg})
+                    {'redosize': size, 'redogroups': groups, 'o_size_changed': v_size_changed,
+                     'o_group_changed': v_group_changed, 'o_size_msg': v_size_msg, 'o_group_msg': v_group_msg})
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
-        msg = '%s' % (error.message)
+        msg = '%s' % error.message
         module.fail_json(msg=msg, changed=False)
-
-
 
     size_result_changed = v_size_changed.getvalue()
     group_result_changed = v_group_changed.getvalue()
-    #module.exit_json(msg=result_changed, changed=False)
+    # module.exit_json(msg=result_changed, changed=False)
     size_msg = v_size_msg.getvalue()
     group_msg = v_group_msg.getvalue()
     msg = "%s. %s." % (size_msg, group_msg)
-    if (size_result_changed > 0 or group_result_changed > 0):
+    if size_result_changed > 0 or group_result_changed > 0:
         changed = True
     else:
         changed = False
-    #module.exit_json(msg=result_changed, changed=False)
-
+    # module.exit_json(msg=result_changed, changed=False)
 
     module.exit_json(msg=msg, changed=changed)
 
 
 from ansible.module_utils.basic import *
+
 if __name__ == '__main__':
     main()

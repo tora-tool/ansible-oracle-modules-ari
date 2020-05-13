@@ -156,8 +156,6 @@ EXAMPLES = '''
       environment: "{{ oracle_env }}"
 '''
 
-import re
-
 try:
     import cx_Oracle
 except ImportError:
@@ -175,6 +173,7 @@ else:
 # Helper code
 oraclepattern = None
 
+
 def clean_string(s):
     # This function should uppercase and clean all strings sent as identifiers to Oracle
     # raise exception if string cannot be cleaned
@@ -186,6 +185,7 @@ def clean_string(s):
         raise
     return supper
 
+
 # Module code
 
 def query_ldap_users():
@@ -196,11 +196,12 @@ def query_ldap_users():
     #
     users = []
     try:
-        result = lconn.search_s(lparam['basedn'], ldap.SCOPE_SUBTREE if lparam['subtree'] else ldap.SCOPE_ONELEVEL, lparam['filter'], resultattrlist)
+        result = lconn.search_s(lparam['basedn'], ldap.SCOPE_SUBTREE if lparam['subtree'] else ldap.SCOPE_ONELEVEL,
+                                lparam['filter'], resultattrlist)
         results = [entry for dn, entry in result if isinstance(entry, dict)]
         for user in results:
             try:
-                userinfo = { 'username': clean_string(user[lparam['username']][0]) }
+                userinfo = {'username': clean_string(user[lparam['username']][0])}
                 if module.params['group_role_map'] is not None:
                     userinfo['memberOf'] = user['memberOf']
                 users.append(userinfo)
@@ -210,45 +211,48 @@ def query_ldap_users():
         module.fail_json(msg="Error querying LDAP: %s" % e, changed=False)
     return users
 
+
 # Ansible code
 def main():
     global lconn, conn, lparam, module
     msg = ['']
     module = AnsibleModule(
-        argument_spec = dict(
-            hostname      = dict(default='localhost'),
-            port          = dict(default=1521, type='int'),
-            service_name  = dict(required=True),
-            user          = dict(required=False),
-            password      = dict(required=False),
-            mode          = dict(default='normal', choices=["normal","sysdba"]),
-            user_default_tablespace = dict(default='USERS'),
-            user_quota_on_default_tbs_mb = dict(default=None, type='int'), # None is unlimited
-            user_temp_tablespace = dict(default='TEMP'),
-            user_profile  = dict(default='LDAP_USER'),
-            user_default_password = dict(default=None), # None means EXTERNAL
-            user_grants   = dict(default=['create session'], type='list'),
-            ldap_connect  = dict(required=True),
-            ldap_binddn   = dict(required=True),
-            ldap_bindpassword = dict(required=True),
-            ldap_user_basedn  = dict(required=True),
-            ldap_user_subtree = dict(default=True, type='bool'),
-            ldap_user_filter  = dict(default='(objectClass=user)'),
-            ldap_username_attribute = dict(default='sAMAccountName'),
-            deleted_user_mode = dict(default='lock', choices=['lock','drop']),
-            group_role_map    = dict(default=None, type='list')
+        argument_spec=dict(
+            hostname=dict(default='localhost'),
+            port=dict(default=1521, type='int'),
+            service_name=dict(required=True),
+            user=dict(required=False),
+            password=dict(required=False),
+            mode=dict(default='normal', choices=["normal", "sysdba"]),
+            user_default_tablespace=dict(default='USERS'),
+            user_quota_on_default_tbs_mb=dict(default=None, type='int'),  # None is unlimited
+            user_temp_tablespace=dict(default='TEMP'),
+            user_profile=dict(default='LDAP_USER'),
+            user_default_password=dict(default=None),  # None means EXTERNAL
+            user_grants=dict(default=['create session'], type='list'),
+            ldap_connect=dict(required=True),
+            ldap_binddn=dict(required=True),
+            ldap_bindpassword=dict(required=True),
+            ldap_user_basedn=dict(required=True),
+            ldap_user_subtree=dict(default=True, type='bool'),
+            ldap_user_filter=dict(default='(objectClass=user)'),
+            ldap_username_attribute=dict(default='sAMAccountName'),
+            deleted_user_mode=dict(default='lock', choices=['lock', 'drop']),
+            group_role_map=dict(default=None, type='list')
         ),
         supports_check_mode=True
-        #, mutually_exclusive=[['schema_password', 'schema_password_hash']]
+        # , mutually_exclusive=[['schema_password', 'schema_password_hash']]
     )
     # Check input variables
     if module.params['user_profile'].upper() == 'DEFAULT':
-        module.fail_json(msg='Please use a dedicated profile for LDAP users, since this is the only method of detecting if user has been deleted from LDAP and should also be closed in database side.')
-    if module.params['user_default_tablespace'].upper() in ['SYSTEM','SYSAUX']:
+        module.fail_json(
+            msg='Please use a dedicated profile for LDAP users, since this is the only method of detecting if user has been deleted from LDAP and should also be closed in database side.')
+    if module.params['user_default_tablespace'].upper() in ['SYSTEM', 'SYSAUX']:
         module.fail_json(msg='no No NO! Choose a proper non-system tablespace for users.')
     # Check for required modules
     if not cx_oracle_exists:
-        module.fail_json(msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+        module.fail_json(
+            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
     if not ldap_module_exists:
         module.fail_json(msg="The ldap module is required. 'pip install ldap' should do the trick.")
     # Connect to LDAP
@@ -273,7 +277,8 @@ def main():
     mode = module.params["mode"]
     wallet_connect = '/@%s' % service_name
     try:
-        if (not user and not password ): # If neither user or password is supplied, the use of an oracle wallet is assumed
+        if (
+                not user and not password):  # If neither user or password is supplied, the use of an oracle wallet is assumed
             if mode == 'sysdba':
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
@@ -281,7 +286,7 @@ def main():
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect)
 
-        elif (user and password ):
+        elif user and password:
             if mode == 'sysdba':
                 dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
                 connect = dsn
@@ -291,7 +296,7 @@ def main():
                 connect = dsn
                 conn = cx_Oracle.connect(user, password, dsn)
 
-        elif (not(user) or not(password)):
+        elif not user or not password:
             module.fail_json(msg='Missing username or password for cx_Oracle')
 
     except cx_Oracle.DatabaseError as exc:
@@ -513,9 +518,10 @@ def main():
     })
     conn.commit()
     #
-    module.exit_json(msg=msg[0], changed=var_changes.getvalue()>0)
+    module.exit_json(msg=msg[0], changed=var_changes.getvalue() > 0)
 
 
 from ansible.module_utils.basic import *
+
 if __name__ == '__main__':
     main()

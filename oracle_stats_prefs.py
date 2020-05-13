@@ -99,27 +99,29 @@ except ImportError:
 else:
     cx_oracle_exists = True
 
+
 # Ansible code
 def main():
     global lconn, conn, msg, module
     msg = ['']
     module = AnsibleModule(
-        argument_spec = dict(
-            hostname      = dict(default='localhost'),
-            port          = dict(default=1521, type='int'),
-            service_name  = dict(required=True),
-            user          = dict(required=False),
-            password      = dict(required=False),
-            mode          = dict(default='normal', choices=["normal","sysdba"]),
-            preference_name = dict(required=True, aliases=['pname']),
-            preference_value = dict(aliases=['pvalue']),
-            state         = dict(default='present', choices=["present","absent"])
+        argument_spec=dict(
+            hostname=dict(default='localhost'),
+            port=dict(default=1521, type='int'),
+            service_name=dict(required=True),
+            user=dict(required=False),
+            password=dict(required=False),
+            mode=dict(default='normal', choices=["normal", "sysdba"]),
+            preference_name=dict(required=True, aliases=['pname']),
+            preference_value=dict(aliases=['pvalue']),
+            state=dict(default='present', choices=["present", "absent"])
         ),
         supports_check_mode=True
     )
     # Check for required modules
     if not cx_oracle_exists:
-        module.fail_json(msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+        module.fail_json(
+            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
     # Connect to database
     hostname = module.params["hostname"]
     port = module.params["port"]
@@ -129,7 +131,8 @@ def main():
     mode = module.params["mode"]
     wallet_connect = '/@%s' % service_name
     try:
-        if (not user and not password ): # If neither user or password is supplied, the use of an oracle wallet is assumed
+        if (
+                not user and not password):  # If neither user or password is supplied, the use of an oracle wallet is assumed
             if mode == 'sysdba':
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
@@ -137,7 +140,7 @@ def main():
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect)
 
-        elif (user and password ):
+        elif user and password:
             if mode == 'sysdba':
                 dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
                 connect = dsn
@@ -147,7 +150,7 @@ def main():
                 connect = dsn
                 conn = cx_Oracle.connect(user, password, dsn)
 
-        elif (not(user) or not(password)):
+        elif not user or not password:
             module.fail_json(msg='Missing username or password for cx_Oracle')
 
     except cx_Oracle.DatabaseError as exc:
@@ -191,7 +194,8 @@ def main():
         :changed:= v_changed;
         :msg:= v_msg;
     END;
-    """, {'pname': module.params['preference_name'], 'pvalue': module.params['preference_value'], 'state': module.params['state'],
+    """, {'pname': module.params['preference_name'], 'pvalue': module.params['preference_value'],
+          'state': module.params['state'],
           'changed': var_changed, 'msg': var_msg})
     result_changed = var_changed.getvalue() > 0
     msg[0] = var_msg.getvalue()
@@ -199,5 +203,6 @@ def main():
 
 
 from ansible.module_utils.basic import *
+
 if __name__ == '__main__':
     main()

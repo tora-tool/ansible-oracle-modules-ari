@@ -1,6 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from ansible.module_utils.basic import *
+
+try:
+    import cx_Oracle
+except ImportError:
+    cx_oracle_exists = False
+else:
+    cx_oracle_exists = True
+
 DOCUMENTATION = '''
 ---
 module: oracle_jobclass
@@ -105,48 +114,49 @@ EXAMPLES = '''
       environment: "{{ oracle_env }}"
 '''
 
-try:
-    import cx_Oracle
-except ImportError:
-    cx_oracle_exists = False
-else:
-    cx_oracle_exists = True
 
 def query_existing(job_class_name):
     c = conn.cursor()
-    c.execute("SELECT resource_consumer_group, service, logging_level, log_history, comments FROM all_scheduler_job_classes WHERE owner = 'SYS' AND job_class_name = :jobclass",
+    c.execute(
+        "SELECT resource_consumer_group, service, logging_level, log_history, comments"
+        "  FROM all_scheduler_job_classes"
+        " WHERE owner = 'SYS' AND job_class_name = :jobclass",
         {"jobclass": job_class_name.upper()})
     result = c.fetchone()
     if c.rowcount > 0:
-        return {"exists": True, "resource_group": result[0], "service": result[1], "logging": result[2], "history": result[3], "comments": result[4]}
+        return {"exists": True, "resource_group": result[0], "service": result[1], "logging": result[2],
+                "history": result[3], "comments": result[4]}
     else:
         return {"exists": False}
+
 
 # Ansible code
 def main():
     global lconn, conn, msg, module
     msg = ['']
     module = AnsibleModule(
-        argument_spec = dict(
-            hostname      = dict(default='localhost'),
-            port          = dict(default=1521, type='int'),
-            service_name  = dict(required=True),
-            user          = dict(required=False),
-            password      = dict(required=False),
-            mode          = dict(default='normal', choices=["normal","sysdba"]),
-            state         = dict(default="present", choices=["present", "absent"]),
-            name          = dict(required=True),
-            resource_group= dict(required=False),
-            service       = dict(required=False),
-            logging       = dict(default="failed runs", choices=["off","runs","failed runs","full"]),
-            history       = dict(required=False, type='int'),
-            comments      = dict(required=False)
+        argument_spec=dict(
+            hostname=dict(default='localhost'),
+            port=dict(default=1521, type='int'),
+            service_name=dict(required=True),
+            user=dict(required=False),
+            password=dict(required=False),
+            mode=dict(default='normal', choices=["normal", "sysdba"]),
+            state=dict(default="present", choices=["present", "absent"]),
+            name=dict(required=True),
+            resource_group=dict(required=False),
+            service=dict(required=False),
+            logging=dict(default="failed runs", choices=["off", "runs", "failed runs", "full"]),
+            history=dict(required=False, type='int'),
+            comments=dict(required=False)
         ),
         supports_check_mode=True
     )
     # Check for required modules
     if not cx_oracle_exists:
-        module.fail_json(msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+        module.fail_json(
+            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick."
+                " If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
     # Check input parameters
     # Connect to database
     hostname = module.params["hostname"]
@@ -157,7 +167,7 @@ def main():
     mode = module.params["mode"]
     wallet_connect = '/@%s' % service_name
     try:
-        if (not user and not password ): # If neither user or password is supplied, the use of an oracle wallet is assumed
+        if not user and not password:  # If neither user or password is supplied, the use of an oracle wallet is assumed
             if mode == 'sysdba':
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
@@ -165,7 +175,7 @@ def main():
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect)
 
-        elif (user and password ):
+        elif user and password:
             if mode == 'sysdba':
                 dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
                 connect = dsn
@@ -175,7 +185,7 @@ def main():
                 connect = dsn
                 conn = cx_Oracle.connect(user, password, dsn)
 
-        elif (not(user) or not(password)):
+        elif not user or not password:
             module.fail_json(msg='Missing username or password for cx_Oracle')
 
     except cx_Oracle.DatabaseError as exc:
@@ -188,12 +198,15 @@ def main():
     if module.check_mode:
         module.exit_json(changed=False)
     #
-    #c = conn.cursor()
+    # c = conn.cursor()
     result_changed = False
     result = query_existing(module.params['name'])
     if result['exists'] and module.params['state'] == "present":
         # Check attributes and modify if needed
-        if (result['comments'] != module.params['comments']) or (result['resource_group'] != module.params['resource_group']) or (result['service'] != module.params['service']) or (result['history'] != module.params['history']) or (result['logging'] != module.params['logging'].upper()):
+        if (result['comments'] != module.params['comments']) or (
+                result['resource_group'] != module.params['resource_group']) or (
+                result['service'] != module.params['service']) or (result['history'] != module.params['history']) or (
+                result['logging'] != module.params['logging'].upper()):
             c = conn.cursor()
             c.execute("""
             DECLARE
@@ -262,8 +275,8 @@ def main():
                                       WHEN 'failed runs' THEN DBMS_SCHEDULER.LOGGING_FAILED_RUNS
                                       WHEN 'full' THEN DBMS_SCHEDULER.LOGGING_FULL
                         END;
-            DBMS_SCHEDULER.CREATE_JOB_CLASS(job_class_name=>:name, resource_consumer_group=>:resource, service=>:service,
-                logging_level=>v_logging, log_history=>:history, comments=>:comments);
+            DBMS_SCHEDULER.CREATE_JOB_CLASS(job_class_name=>:name, resource_consumer_group=>:resource,
+                service=>:service, logging_level=>v_logging, log_history=>:history, comments=>:comments);
         END;""", {
             "logging": module.params['logging'],
             "name": module.params['name'].upper(),
@@ -278,6 +291,5 @@ def main():
     module.exit_json(msg=", ".join(msg), changed=result_changed)
 
 
-from ansible.module_utils.basic import *
 if __name__ == '__main__':
     main()

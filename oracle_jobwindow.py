@@ -125,49 +125,55 @@ except ImportError:
 else:
     cx_oracle_exists = True
 
+
 def query_existing(name):
     c = conn.cursor()
-    c.execute("SELECT resource_plan, duration, window_priority, enabled, repeat_interval, comments FROM all_scheduler_windows WHERE owner = 'SYS' AND window_name = :name",
+    c.execute(
+        "SELECT resource_plan, duration, window_priority, enabled, repeat_interval, comments FROM all_scheduler_windows WHERE owner = 'SYS' AND window_name = :name",
         {"name": name})
     result = c.fetchone()
     if c.rowcount > 0:
-        return {"exists": True, "resource_plan": result[0], "duration": result[1], "window_priority": result[2], "enabled": (result[3] == "TRUE"),
-            "repeat_interval": result[4], "comments": result[5]}
+        return {"exists": True, "resource_plan": result[0], "duration": result[1], "window_priority": result[2],
+                "enabled": (result[3] == "TRUE"),
+                "repeat_interval": result[4], "comments": result[5]}
     else:
         return {"exists": False}
+
 
 # Ansible code
 def main():
     global lconn, conn, msg, module
     msg = ['']
     module = AnsibleModule(
-        argument_spec = dict(
-            hostname      = dict(default='localhost'),
-            port          = dict(default=1521, type='int'),
-            service_name  = dict(required=True),
-            user          = dict(required=False),
-            password      = dict(required=False),
-            mode          = dict(default='normal', choices=["normal","sysdba"]),
-            state         = dict(default="enabled", choices=["absent","enabled","disabled"]),
-            name          = dict(required=True, aliases=["window_name"]),
-            resource_plan = dict(required=False),
-            repeat_interval = dict(required=True, aliases=['interval']),
-            window_priority = dict(default="low", choices=["low","high"], aliases=['priority']),
-            duration_min  = dict(required=False, type='int'),
-            duration_hour = dict(required=False, type='int'),
-            comments      = dict(required=False)
+        argument_spec=dict(
+            hostname=dict(default='localhost'),
+            port=dict(default=1521, type='int'),
+            service_name=dict(required=True),
+            user=dict(required=False),
+            password=dict(required=False),
+            mode=dict(default='normal', choices=["normal", "sysdba"]),
+            state=dict(default="enabled", choices=["absent", "enabled", "disabled"]),
+            name=dict(required=True, aliases=["window_name"]),
+            resource_plan=dict(required=False),
+            repeat_interval=dict(required=True, aliases=['interval']),
+            window_priority=dict(default="low", choices=["low", "high"], aliases=['priority']),
+            duration_min=dict(required=False, type='int'),
+            duration_hour=dict(required=False, type='int'),
+            comments=dict(required=False)
         ),
         supports_check_mode=True,
-        mutually_exclusive=[['duration_min','duration_hour']]
+        mutually_exclusive=[['duration_min', 'duration_hour']]
     )
     # Check for required modules
     if not cx_oracle_exists:
-        module.fail_json(msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+        module.fail_json(
+            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
     # Check input parameters
     job_fullname = module.params['name'].upper()
     if module.params['duration_min'] is None and module.params['duration_hour'] is None:
         module.fail_json(msg='Either duration_min or duration_hour must be specified', changed=False)
-    new_duration_min = module.params['duration_min'] if module.params['duration_min'] else (module.params['duration_hour']*60)
+    new_duration_min = module.params['duration_min'] if module.params['duration_min'] else (
+                module.params['duration_hour'] * 60)
     new_duration = timedelta(minutes=new_duration_min)
     if new_duration_min < 1:
         module.fail_json(msg='Invalid window duration', changed=False)
@@ -180,7 +186,8 @@ def main():
     mode = module.params["mode"]
     wallet_connect = '/@%s' % service_name
     try:
-        if (not user and not password ): # If neither user or password is supplied, the use of an oracle wallet is assumed
+        if (
+                not user and not password):  # If neither user or password is supplied, the use of an oracle wallet is assumed
             if mode == 'sysdba':
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
@@ -188,7 +195,7 @@ def main():
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect)
 
-        elif (user and password ):
+        elif user and password:
             if mode == 'sysdba':
                 dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
                 connect = dsn
@@ -198,7 +205,7 @@ def main():
                 connect = dsn
                 conn = cx_Oracle.connect(user, password, dsn)
 
-        elif (not(user) or not(password)):
+        elif not user or not password:
             module.fail_json(msg='Missing username or password for cx_Oracle')
 
     except cx_Oracle.DatabaseError as exc:
@@ -211,13 +218,14 @@ def main():
     if module.check_mode:
         module.exit_json(changed=False)
     #
-    #c = conn.cursor()
+    # c = conn.cursor()
     result_changed = False
     result = query_existing(job_fullname)
     if (result['exists'] and module.params['state'] != "absent" and (
             (result['comments'] != module.params['comments']) or
             (result['repeat_interval'] != module.params['repeat_interval']) or
-            (result['resource_plan'] != module.params['resource_plan'].upper() if module.params['resource_plan'] else None) or
+            (result['resource_plan'] != module.params['resource_plan'].upper() if module.params[
+                'resource_plan'] else None) or
             (result['window_priority'] != module.params['window_priority'].upper()) or
             (result['duration'] != new_duration))):
         c = conn.cursor()
@@ -280,7 +288,7 @@ def main():
         c = conn.cursor()
         c.execute("BEGIN DBMS_SCHEDULER.DROP_WINDOW(window_name=>:name); END;", {"name": job_fullname})
         result_changed = True
-    elif not result['exists'] and module.params['state'] in ("enabled","disabled"):
+    elif not result['exists'] and module.params['state'] in ("enabled", "disabled"):
         # Create window
         c = conn.cursor()
         c.execute("""
@@ -311,5 +319,6 @@ def main():
 
 
 from ansible.module_utils.basic import *
+
 if __name__ == '__main__':
     main()
