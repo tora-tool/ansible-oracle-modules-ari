@@ -292,15 +292,18 @@ class Datafile:
     nextsize = None
     path = None
     size = None
+    block_size = None
+    max_blocks_for_small_file = 4194302
 
-    def __init__(self, path, size, autoextend=False, nextsize=None, maxsize=None, bigfile=False):
+    def __init__(self, path, size, autoextend=False, nextsize=None, maxsize=None, bigfile=False, block_size=8192):
         self.path = path
         self.size = Size(size) if size else None
         self.autoextend = autoextend
         self.nextsize = Size(nextsize) if nextsize else None
         self.maxsize = Size(maxsize) if maxsize else None
-        # 32G for a smallfile is an unlimited max size ; it's not quite 32G, thus the 100K precision.
-        if not bigfile and self.maxsize and abs(32 * 1024 ** 3 - self.maxsize.size) <= 100 * 1024:
+        self.block_size = block_size
+        # For a smallfile unlimited is max_blocks * block_size.
+        if not bigfile and self.maxsize and self.max_blocks_for_small_file * self.block_size == self.maxsize.size:
             self.maxsize.unlimited = True
 
     def data_file_clause(self):
@@ -435,12 +438,14 @@ def get_existing_tablespace(tablespace):
 
 def get_existing_datafiles(tablespace):
     """Search for all existing datafiles for a specific tablespace"""
-    sql = "select df.file_name, df.bytes, df.autoextensible, df.increment_by * ts.block_size, df.maxbytes, ts.bigfile" \
+    sql = "select df.file_name, df.bytes, df.autoextensible, df.increment_by * ts.block_size, df.maxbytes," \
+          "       ts.bigfile, ts.block_size" \
           "  from dba_tablespaces ts, dba_data_files df" \
           " where ts.tablespace_name = :tn" \
           "   and ts.tablespace_name = df.tablespace_name" \
           " union all " \
-          "select df.file_name, df.bytes, df.autoextensible, df.increment_by * ts.block_size, df.maxbytes, ts.bigfile" \
+          "select df.file_name, df.bytes, df.autoextensible, df.increment_by * ts.block_size, df.maxbytes," \
+          "       ts.bigfile, ts.block_size" \
           "  from dba_tablespaces ts, dba_temp_files df" \
           " where ts.tablespace_name = :tn" \
           "   and ts.tablespace_name = df.tablespace_name"
@@ -453,7 +458,7 @@ def get_existing_datafiles(tablespace):
         for row in rows:
             datafiles.append(
                 Datafile(path=row[0], size=row[1], autoextend=row[2] == 'YES', nextsize=row[3], maxsize=row[4],
-                         bigfile=row[5] == 'YES'))
+                         bigfile=row[5] == 'YES', block_size=row[6]))
         diff['before']['datafiles'] = [datafile.asdict() for datafile in datafiles]
         return datafiles
     except cx_Oracle.DatabaseError as e:

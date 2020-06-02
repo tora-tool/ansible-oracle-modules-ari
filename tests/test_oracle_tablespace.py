@@ -60,12 +60,13 @@ class TestDataFile(unittest.TestCase):
         self.assertIsNone(d.maxsize)
 
     def test_constructor_with_value(self):
-        d = Datafile('/path/to/dbf', '0.5K', True, '1M', 'unlimited')
+        d = Datafile('/path/to/dbf', '0.5K', True, '1M', 'unlimited', False, 16384)
         self.assertEqual('/path/to/dbf', d.path)
         self.assertEqual('512', str(d.size))
         self.assertTrue(d.autoextend)
         self.assertEqual('1M', str(d.nextsize))
         self.assertEqual('unlimited', str(d.maxsize))
+        self.assertEqual(16384, d.block_size)
 
     def test_needs_resize(self):
         new = Datafile('/path/to/dbf', 1024, True)
@@ -101,11 +102,11 @@ class TestDataFile(unittest.TestCase):
         prev = Datafile('/path/to/dbf', 1024, True, '1M', '20M')
         self.assertFalse(new.needs_change_autoextend(prev), 'same values')
 
-        new = Datafile('/path/to/dbf', 512, True, '1M', '32G', False)
+        new = Datafile('/path/to/dbf', 512, True, '1M', '34359721984', False)
         prev = Datafile('/path/to/dbf', 1024, True, '1M', 'unlimited', False)
         self.assertFalse(new.needs_change_autoextend(prev), '32G and unlimited are same value for small files')
 
-        new = Datafile('/path/to/dbf', 512, True, '1M', '32G', True)
+        new = Datafile('/path/to/dbf', 512, True, '1M', '34359721984', True)
         prev = Datafile('/path/to/dbf', 1024, True, '1M', 'unlimited', True)
         self.assertTrue(new.needs_change_autoextend(prev), '32G and unlimited are different values for big files')
 
