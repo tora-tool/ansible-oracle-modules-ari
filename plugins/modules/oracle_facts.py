@@ -1,225 +1,390 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from ansible.module_utils.basic import *
+# Copyright: (c) 2017 Ilmar Kerm <ilmar.kerm@gmail.com>
+# Copyright: (c) 2020, Ari Stark <ari.stark@netcourrier.com>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-try:
-    import cx_Oracle
-except ImportError:
-    cx_oracle_exists = False
-else:
-    cx_oracle_exists = True
+
+import cx_Oracle
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.basic import os
+
+ANSIBLE_METADATA = {
+    'metadata_version': '1.1',
+    'status': ['preview'],
+    'supported_by': 'community'}
 
 DOCUMENTATION = '''
 ---
 module: oracle_facts
 short_description: Returns some facts about Oracle DB
 description:
-    - Returns some facts about Oracle DB
+    - This module returns some facts about Oracle database.
+    - It has several subsets and will gather all subsets by default.
 version_added: "2.2.1"
+author:
+    - Ilmar Kerm (@ilmarkerm)
+    - Ari Stark (@ari-stark)
 options:
+    gather_subset:
+        description:
+            - Specify the subset to gather.
+            - 'min' and 'database' are aliases and will get the same facts.
+            - 'all' will gather all possible facts.
+            - Every other choice will lead to get 'min' facts and others asked for.
+        default: all
+        type: list
+        choices: ['all', 'database', 'instance', 'min', 'option', 'parameter', 'pdb', 'rac', 'redolog', 'tablespace',
+                  'userenv', 'user']
     hostname:
         description:
-            - The Oracle database host
-        required: false
+            - Specify the host name or IP address of the database server computer.
         default: localhost
-    port:
-        description:
-            - The listener port number on the host
-        required: false
-        default: 1521
-    service_name:
-        description:
-            - The database service name to connect to
-        required: true
-    user:
-        description:
-            - The Oracle user name to connect to the database, must have DBA privilege
-        required: False
-    password:
-        description:
-            - The Oracle user password for 'user'
-        required: False
+        type: str
     mode:
         description:
-            - The mode with which to connect to the database
-        required: false
+            - This option is the database administration privileges.
         default: normal
-        choices:
-            - normal
-            - sysdba
+        type: str
+        choices: ['normal', 'sysdba']
+    oracle_home:
+        description:
+            - Define the directory into which all Oracle software is installed.
+            - Define ORACLE_HOME environment variable if set.
+        type: str
+    password:
+        description:
+            - Set the password to use to connect the database server.
+            - Must not be set if using Oracle wallet.
+        type: str
+    port:
+        description:
+            - Specify the listening port on the database server.
+        default: 1521
+        type: int
+    service_name:
+        description:
+            - Specify the service name of the database you want to access.
+        required: true
+        type: str
+    username:
+        description:
+            - Set the login to use to connect the database server.
+            - Must not be set if using Oracle wallet.
+        type: str
+        aliases: ['user']
+requirements:
+    - Python module cx_Oracle
+    - Oracle basic tools.
 notes:
-    - cx_Oracle needs to be installed
-    - Oracle RDBMS 10gR2 or later required
-requirements: [ "cx_Oracle" ]
-author: Ilmar Kerm, ilmar.kerm@gmail.com, @ilmarkerm
+    - Check mode is supported and won't change anything as this module don't make anything.
+    - Diff mode is not supported, as this module don't make anything.
+    - Oracle RDBMS 10gR2 or later required.
 '''
 
 EXAMPLES = '''
-- hosts: localhost
-  vars:
-    oraclehost: 192.168.56.101
-    oracleport: 1521
-    oracleservice: orcl
-    oracleuser: system
-    oraclepassword: oracle
-    oracle_env:
-      ORACLE_HOME: /usr/lib/oracle/12.1/client64
-      LD_LIBRARY_PATH: /usr/lib/oracle/12.1/client64/lib
-  tasks:
-    - name: gather database facts
-      oracle_facts:
-        hostname: "{{ oraclehost }}"
-        port: "{{ oracleport }}"
-        service_name: "{{ oracleservice }}"
-        user: "{{ oracleuser }}"
-        password: "{{ oraclepassword }}"
-      register: dbfacts
-    - debug:
-        var: dbfacts
+- name: gather all database facts
+  oracle_facts:
+    hostname: "192.168.56.101"
+    port: 1521
+    service_name: "orcl"
+    username: "system"
+    password: "oracle"
+  register: dbfacts
+
+- name: gather 'min' and 'parameter' facts
+  oracle_facts:
+    hostname: "192.168.56.101"
+    port: 1521
+    service_name: "orcl"
+    username: "system"
+    password: "oracle"
+    gather_subset: "parameter"
+  register: dbfacts
+
+- name: gather 'min', 'parameter' and 'tablespace' facts
+  oracle_facts:
+    hostname: "192.168.56.101"
+    port: 1521
+    service_name: "orcl"
+    username: "system"
+    password: "oracle"
+    gather_subset:
+        - "parameter"
+        - "tablespace"
+  register: dbfacts
 '''
 
-global conn
+RETURN = '''
+version:
+    description: Contains the database version
+    type: str
+database:
+    description: Contains content of v$database.
+    type: dict
+    elements: str
+instance:
+    description: Contains content of v$instance.
+    returned: if I(instance) or I(all) is in requested subset.
+    type: dict
+    elements: str
+options:
+    description: Contains content of v$option.
+    returned: if I(option) or I(all) is in requested subset.
+    type: dict
+    elements: str
+parameters:
+    description: Contains content of v$parameter.
+    returned: if I(parameter) or I(all) is in requested subset.
+    type: dict
+    elements: dict
+pdbs:
+    description: Contains content of v$pdb.
+    returned: if I(pdb) or I(all) is in requested subset.
+    type: list
+    elements: dict
+racs:
+    description: Contains content of gv$instance.
+    returned: if I(rac) or I(all) is in requested subset.
+    type: list
+    elements: dict
+redologs:
+    description: Contains content of v$log.
+    returned: if I(redolog) or I(all) is in requested subset.
+    type: list
+    elements: dict
+tablespaces:
+    description: Contains content of v$tablespace and v$datafile.
+    returned: if I(tablespace) or I(all) is in requested subset.
+    type: list
+    elements: dict
+temp_tablespaces:
+    description: Contains content of v$tablespace and v$tempfile.
+    returned: if I(tablespace) or I(all) is in requested subset.
+    type: list
+    elements: dict
+userenv:
+    description: Contains some data of current user.
+    returned: if I(userenv) or I(all) is in requested subset.
+    type: dict
+    elements: str
+users:
+    description: Contains content of all_users.
+    returned: if I(user) or I(all) is in requested subset.
+    type: list
+    elements: dict
+'''
+
+global module
+global cursor
 
 
-def rows_to_dict_list(cursor):
-    columns = [i[0] for i in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor]
+def execute_select(sql):
+    """Executes a select query and return fetched data"""
+    try:
+        return cursor.execute(sql).fetchall()
+    except cx_Oracle.DatabaseError as e:
+        error = e.args[0]
+        module.fail_json(msg=error.message, code=error.code, request=sql)
 
 
-def query_result(query):
-    c = conn.cursor()
-    c.execute(query)
-    res = rows_to_dict_list(c)
-    c.close()
-    return res
+def execute_select_to_dict(sql):
+    """Executes a select query and return a list of dictionaries : one dictionary for each row"""
+    try:
+        cursor.execute(sql)
+        column_names = [description[0].lower() for description in
+                        cursor.description]  # First element is the column name.
+        return [dict(zip(column_names, row)) for row in cursor]
+    except cx_Oracle.DatabaseError as e:
+        error = e.args[0]
+        module.fail_json(msg=error.message, code=error.code, request=sql)
 
 
-def star_query(rowsource):
-    return query_result("SELECT * FROM %s" % rowsource)
+def get_database():
+    """Get the v$database content"""
+    return execute_select_to_dict('select * from v$database')[0]  # The table is a oneliner.
+
+
+def get_instance():
+    """Get the v$instance content"""
+    return execute_select_to_dict('select * from v$instance')[0]  # The table is a oneliner.
+
+
+def get_options():
+    """Get the v$option content"""
+    options = execute_select('select parameter, value from v$option order by parameter')
+    parameters, values = zip(*options)
+    return dict(zip(parameters, values))
+
+
+def get_parameters():
+    """Get the v$parameter content"""
+    param_list = execute_select('select name, value, isdefault from v$parameter order by name')
+    names, values, isdefaults = zip(*param_list)  # Splits...
+    return {names[i]: {'value': values[i], 'isdefault': isdefaults[i]} for i in range(0, len(names))}  # ... and groups.
+
+
+def get_pdbs():
+    """Get the v$pdbs content"""
+    return execute_select_to_dict(
+        'select con_id, rawtohex(guid) guid_hex, name, open_mode, total_size from v$pdbs order by name')
+
+
+def get_racs():
+    """Get the gv$instance content"""
+    return execute_select_to_dict(
+        'select inst_id, instance_name, host_name, startup_time from gv$instance order by inst_id')
+
+
+def get_redologs():
+    """Get the v$log content"""
+    return execute_select_to_dict(
+        'select group#, thread#, sequence#, round(bytes/power(1024, 2)) mb, blocksize, archived, status'
+        '  from v$log'
+        ' order by thread#, group#')
+
+
+def get_tablespaces():
+    """Get the v$tablespace and v$datafile content"""
+    return execute_select_to_dict(
+        'select ts.con_id, ts.name, ts.bigfile, df.name datafile_name, round(df.bytes/power(1024, 2)) size_mb'
+        '  from v$tablespace ts, v$datafile df'
+        ' where df.con_id = ts.con_id and df.ts# = ts.ts#'
+        ' order by ts.con_id, ts.name, df.name')
+
+
+def get_temp_tablespaces():
+    """Get the v$tablespace and v$tempfile content"""
+    return execute_select_to_dict(
+        'select ts.con_id, ts.name, ts.bigfile, tf.name tempfile_name, round(tf.bytes/power(1024, 2)) size_mb'
+        '  from v$tablespace ts, v$tempfile tf'
+        ' where tf.con_id = ts.con_id and tf.ts# = ts.ts#'
+        ' order by ts.con_id, ts.name, tf.name')
+
+
+def get_userenv():
+    """Get data of current user"""
+    return execute_select_to_dict("select sys_context('USERENV','CURRENT_USER') current_user,"
+                                  "       sys_context('USERENV','DATABASE_ROLE') database_role,"
+                                  "       sys_context('USERENV','ISDBA') isdba,"
+                                  "       sys_context('USERENV','ORACLE_HOME') oracle_home,"
+                                  "       to_number(sys_context('USERENV','CON_ID')) con_id,"
+                                  "       sys_context('USERENV','CON_NAME') con_name"
+                                  "  from dual")[0]
+
+
+def get_users():
+    """Get the all_users content"""
+    return execute_select_to_dict(
+        "select username, user_id, created from all_users where oracle_maintained = 'N' order by username")
 
 
 # Ansible code
 def main():
-    global conn
-    msg = ['']
+    global module
+    global cursor
+
     module = AnsibleModule(
         argument_spec=dict(
-            hostname=dict(default='localhost'),
-            port=dict(default=1521, type='int'),
-            service_name=dict(required=True),
-            user=dict(required=False),
-            password=dict(required=False),
-            mode=dict(default='normal', choices=["normal", "sysdba"])
+            gather_subset=dict(type='list',
+                               default=['all'],
+                               choices=['all', 'database', 'instance', 'min', 'option', 'parameter', 'pdb', 'rac',
+                                        'redolog', 'tablespace', 'userenv', 'user']),
+            hostname=dict(type='str', default='localhost'),
+            mode=dict(type='str', default='normal', choices=['normal', 'sysdba']),
+            oracle_home=dict(type='str', required=False),
+            password=dict(type='str', required=False, no_log=True),
+            port=dict(type='int', default=1521),
+            service_name=dict(type='str', required=True),
+            username=dict(type='str', required=False, aliases=['user']),
         ),
-        supports_check_mode=True
+        required_together=[['username', 'password']],
+        supports_check_mode=True,
     )
-    # Check for required modules
-    if not cx_oracle_exists:
-        module.fail_json(
-            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick."
-                " If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+
     # Connect to database
-    hostname = module.params["hostname"]
-    port = module.params["port"]
-    service_name = module.params["service_name"]
-    user = module.params["user"]
-    password = module.params["password"]
-    mode = module.params["mode"]
-    wallet_connect = '/@%s' % service_name
+    gather_subset = set(module.params['gather_subset'])
+    hostname = module.params['hostname']
+    mode = module.params['mode']
+    oracle_home = module.params['oracle_home']
+    password = module.params['password']
+    port = module.params['port']
+    service_name = module.params['service_name']
+    username = module.params['username']
+
+    if 'all' in gather_subset:
+        gather_subset.remove('all')
+        gather_subset.update(
+            ['database', 'instance', 'option', 'parameter', 'pdb', 'rac', 'redolog', 'tablespace', 'userenv', 'user'])
+    if 'min' in gather_subset:
+        gather_subset.remove('min')
+        gather_subset.add('database')
+    if oracle_home:
+        os.environ['ORACLE_HOME'] = oracle_home
+
+    version = None
+
+    # Setting connection
+    connection_parameters = {}
+    if username and password:
+        connection_parameters['user'] = username
+        connection_parameters['password'] = password
+        connection_parameters['dsn'] = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
+    else:  # Using Oracle wallet
+        connection_parameters['dsn'] = service_name
+
+    if mode == 'sysdba':
+        connection_parameters['mode'] = cx_Oracle.SYSDBA
+
+    # Connecting
     try:
-        if not user and not password:  # If neither user or password is supplied, the use of an oracle wallet is assumed
-            if mode == 'sysdba':
-                connect = wallet_connect
-                conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
-            else:
-                connect = wallet_connect
-                conn = cx_Oracle.connect(wallet_connect)
+        connection = cx_Oracle.connect(**connection_parameters)
+        version = connection.version
+        cursor = connection.cursor()
+    except cx_Oracle.DatabaseError as e:
+        error = e.args[0]
+        module.fail_json(msg=error.message, code=error.code)
 
-        elif user and password:
-            if mode == 'sysdba':
-                dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-                connect = dsn
-                conn = cx_Oracle.connect(user, password, dsn, mode=cx_Oracle.SYSDBA)
-            else:
-                dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-                connect = dsn
-                conn = cx_Oracle.connect(user, password, dsn)
+    if version < '12.0':
+        module.fail_json(msg='Database version must be 12 or greater.', changed=False)
 
-        elif not user or not password:
-            module.fail_json(msg='Missing username or password for cx_Oracle')
-
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg[0] = 'Could not connect to database - %s, connect descriptor: %s' % (error.message, connect)
-        module.fail_json(msg=msg[0], changed=False)
-    if conn.version < "10.2":
-        module.fail_json(msg="Database version must be 10gR2 or greater", changed=False)
-    #
-    if module.check_mode:
-        module.exit_json(changed=False)
-    #
-    facts = {'version': conn.version}
+    facts = {'version': version}
     # Execute PL/SQL to return some additional facts
-    database = star_query('v$database')[0]
-    instance = star_query('v$instance')[0]
-    if 'CDB' not in database:
-        database.update({'CDB': 'NO'})
-    #
-    try:
-        rac = query_result("SELECT inst_id, instance_name, host_name, startup_time FROM gv$instance ORDER BY inst_id")
-    except cx_Oracle.DatabaseError:
-        rac = []
-    try:
-        if database['CDB'] == 'YES':
-            pdb = query_result("SELECT con_id, rawtohex(guid) guid_hex, name, open_mode FROM v$pdbs ORDER BY name")
-        else:
-            pdb = []
-    except cx_Oracle.DatabaseError:
-        pdb = []
-    if conn.version >= '12.1':
-        tablespace = query_result(
-            "select ts.con_id, ts.name, ts.bigfile, round(sum(bytes)/1024/1024) size_mb, count(*) datafiles#"
-            "  from v$tablespace ts join v$datafile df on df.ts#=ts.ts# and df.con_id=ts.con_id"
-            " group by ts.name, ts.bigfile, ts.con_id order by 1,2")
-        temp_tablespace = query_result(
-            "select ts.con_id, ts.name, ts.bigfile, round(sum(bytes)/1024/1024) size_mb, count(*) tempfiles#"
-            "  from v$tablespace ts join v$tempfile df on df.ts#=ts.ts# and df.con_id=ts.con_id"
-            " group by ts.name, ts.bigfile, ts.con_id order by 1,2")
-    else:
-        tablespace = query_result(
-            "select 0 con_id, ts.name, ts.bigfile, round(sum(bytes)/1024/1024) size_mb, count(*) datafiles#"
-            "  from v$tablespace ts join v$datafile df on df.ts#=ts.ts#"
-            " group by ts.name, ts.bigfile order by 1,2")
-        temp_tablespace = query_result(
-            "select 0 con_id, ts.name, ts.bigfile, round(sum(bytes)/1024/1024) size_mb, count(*) tempfiles#"
-            "  from v$tablespace ts join v$tempfile df on df.ts#=ts.ts#"
-            " group by ts.name, ts.bigfile order by 1,2")
-    redolog = query_result(
-        "select group#, thread#, sequence#, round(bytes/1024/1024) mb, blocksize, archived, status"
-        "  from v$log"
-        " order by thread#,group#")
-    option = star_query("v$option")
-    parameter = {}
-    for param in query_result("select name, value, isdefault from v$parameter order by 1"):
-        parameter[param['NAME']] = {'isdefault': param['ISDEFAULT'], 'value': param['VALUE']}
-    # USERENV
-    sql = "SELECT sys_context('USERENV','CURRENT_USER') current_user," \
-          " sys_context('USERENV','DATABASE_ROLE') database_role, sys_context('USERENV','ISDBA') isdba," \
-          " sys_context('USERENV','ORACLE_HOME') oracle_home"
-    if conn.version >= '12.1':
-        sql += ", to_number(sys_context('USERENV','CON_ID')) con_id, sys_context('USERENV','CON_NAME') con_name"
-    if conn.version >= '11.1':
-        sql += ", to_number(sys_context('USERENV','CURRENT_EDITION_ID')) CURRENT_EDITION_ID," \
-               " sys_context('USERENV','CURRENT_EDITION_NAME') CURRENT_EDITION_NAME"
-    sql += " FROM DUAL"
-    userenv = query_result(sql)[0]
-    #
-    facts.update({'database': database, 'instance': instance, 'rac': rac, 'pdb': pdb, 'tablespace': tablespace,
-                  'temp_tablespace': temp_tablespace, 'userenv': userenv, 'redolog': redolog, 'option': option,
-                  'parameter': parameter})
-    #
-    module.exit_json(msg=msg[0], changed=False, ansible_facts=facts)
+
+    # database/min subset is always done.
+    database = get_database()
+    facts['database'] = database
+
+    if 'instance' in gather_subset:
+        facts['instance'] = get_instance()
+
+    if 'option' in gather_subset:
+        facts['options'] = get_options()
+
+    if 'parameter' in gather_subset:
+        facts['parameters'] = get_parameters()
+
+    if 'pdb' in gather_subset:
+        facts['pdbs'] = get_pdbs()
+
+    if 'rac' in gather_subset:
+        facts['racs'] = get_racs()
+
+    if 'redolog' in gather_subset:
+        facts['redologs'] = get_redologs()
+
+    if 'tablespace' in gather_subset:
+        facts['tablespaces'] = get_tablespaces()
+        facts['temp_tablespaces'] = get_temp_tablespaces()
+
+    if 'userenv' in gather_subset:
+        facts['userenv'] = get_userenv()
+
+    if 'user' in gather_subset:
+        facts['users'] = get_users()
+
+    module.exit_json(changed=False, oracle_facts=facts)
 
 
 if __name__ == '__main__':

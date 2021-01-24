@@ -43,6 +43,12 @@ The Python module `cx_Oracle` needs to be installed on the Ansible host. (`pip i
 - This module manages Oracle directory objects.
 - It can create, replace or drop directories.
 
+#### oracle_facts ####
+
+- This module return some facts about Oracle database.
+- It requires privileges to access v$database.
+- The option `gather_subset` can filter facts to gather and return.
+
 #### oracle_grant ####
 
 - This module manages Oracle privileges.
@@ -116,12 +122,6 @@ pre-rec: cx_Oracle
 
 - Create/remove databases (cdb/non-cdb)
 - Can be created by passing in a responsefile or just by using parameters
-
-#### oracle_facts ####
-
-pre-req: cx_Oracle
-
-- Gathers facts about Oracle database
 
 #### oracle_gi_facts ####
 
