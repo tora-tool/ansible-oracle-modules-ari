@@ -1,511 +1,482 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from ansible.module_utils.basic import *
+import cx_Oracle
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.basic import os
 
-try:
-    import cx_Oracle
-except ImportError:
-    cx_oracle_exists = False
-else:
-    cx_oracle_exists = True
+ANSIBLE_METADATA = {
+    'metadata_version': '1.1',
+    'status': ['preview'],
+    'supported_by': 'community'}
 
 DOCUMENTATION = '''
----
 module: oracle_user
-short_description: Manage users/schemas in an Oracle database
+short_description: Manages Oracle user/schema.
 description:
-  - Manage users/schemas in an Oracle database
-  - Can be run locally on the controlmachine or on a remote host
+    - This module manages Oracle user/schema.
+    - It can create, alter or drop users.
+    - It can empty schemas (droping all its content).
+    - It can change password of users ; lock/unlock and expire/unexpire accounts.
+    - It can't be used to give privileges (refer to oracle_grant).
 version_added: "1.9.1"
+author:
+    - Mikael Sandström (@oravirt)
+    - Ari Stark (@ari-stark)
 options:
-  hostname:
-    description:
-      - The Oracle database host
-    required: false
-    default: localhost
-  port:
-    description:
-      - The listener port number on the host
-    required: false
-    default: 1521
-  service_name:
-    description:
-      - The database service name to connect to
-    required: true
-  user:
-    description:
-      - The Oracle user name to connect to the database
-    required: false
-  password:
-    description:
-      - The Oracle user password for 'user'
-    required: false
-  mode:
-    description:
-      - The mode with which to connect to the database
-    required: false
-    default: normal
-    choices: ['normal','sysdba']
-  schema:
-    description:
-      - The schema that you want to manage
-    required: false
-    default: None
-  schema_password:
-    description:
-      - The password for the new schema. i.e '..identified by password'
-    required: false
-    default: null
-  schema_password_hash:
-    description:
-      - The password hash for the new schema. i.e '..identified by values 'XXXXXXX'
-    required: false
-    default: None
-  default_tablespace:
-    description:
-      - The default tablespace for the new schema. The tablespace must exist
-    required: false
-    default: None
-  default_temp_tablespace:
-    description:
-      - The default tablespace for the new schema. The tablespace must exist
-    required: false
-    default: None
-  update_password:
-    description:
-      - always will update passwords if they differ. on_create will only set the password for newly created users.
-    required: false
-    default: always
-    choices: ['always','on_create']
-  authentication_type:
-    description:
-      - The type of authentication for the user.
-    required: false
-    default: password
-    choices: ['password','external','global']
-  profile:
-    description:
-      - The profile for the user
-    required: false
-    default: None
-  grants:
-    description:
-      - The privileges granted to the new schema
-    required: false
-    default: None
-  state:
-    description:
-      - Whether the user should exist. Absent removes the user, locked/unlocked locks or unlocks the user
-    required: False
-    default: present
-    choices: ['present','absent','locked','unlocked']
+    authentication_type:
+        description:
+            - Type of authentication for the user.
+            - If not specified for a new user and no I(schema_password) is specified, there won't be authentication.
+            - If not specified and I(schema_password) is specified, value will be forced to I(password).
+        required: false
+        default: None
+        type: str
+        choices: ['external', 'global', 'no_authentification', 'password']
+    default_tablespace:
+        description:
+            - Default tablespace for the user.
+            - Tablespace must exist.
+            - If not specified for a new user, Oracle default will be used.
+        required: false
+        type: str
+    expired:
+        description:
+            - Expire or unexpire account.
+            - If not specified for a new user, Oracle default will be used.
+        required: false
+        type: bool
+    hostname:
+        description:
+            - Specify the host name or IP address of the database server computer.
+        default: localhost
+        type: str
+    locked:
+        description:
+            - Lock or unlock account.
+            - If not specified for a new user, Oracle default will be used.
+        required: false
+        type: bool
+    mode:
+        description:
+            - This option is the database administration privileges.
+        default: normal
+        type: str
+        choices: ['normal', 'sysdba']
+    oracle_home:
+        description:
+            - Define the directory into which all Oracle software is installed.
+            - Define ORACLE_HOME environment variable if set.
+        type: str
+    password:
+        description:
+            - Set the password to use to connect the database server.
+            - Must not be set if using Oracle wallet.
+        type: str
+    port:
+        description:
+            - Specify the listening port on the database server.
+        default: 1521
+        type: int
+    profile:
+        description:
+            - Profile of the user.
+            - Profile must exist.
+            - If not specified for a new user, Oracle default will be used.
+        required: false
+        type: str
+    schema_name:
+        description:
+            - Name of the user to manage.
+        required: true
+        type: str
+        aliases:
+            - name
+    schema_password:
+        description:
+            - Password of the user account.
+        required: true if I(authentication_type) is I(password).
+        type: str
+    service_name:
+        description:
+            - Specify the service name of the database you want to access.
+        required: true
+        type: str
+    state:
+        description:
+            - Specify the state of the user/schema.
+            - If I(state=empty), the schema will be purged, but not dropped.
+            - If I(state=absent), the tablespace will be droped, including all datafiles.
+        default: present
+        type: str
+        choices: ['absent', 'empty', 'present']
+    temporary_tablespace:
+        description:
+            - Default temporary tablespace for the user.
+            - Tablespace must exist.
+            - If not specified for a new user, Oracle default will be used.
+        required: false
+        type: str
+    username:
+        description:
+            - Set the login to use to connect the database server.
+            - Must not be set if using Oracle wallet.
+        type: str
+        aliases:
+            - user
+requirements:
+    - Python module cx_Oracle
+    - Oracle basic tools.
 notes:
-  - cx_Oracle needs to be installed
-requirements: [ "cx_Oracle" ]
-author: Mikael Sandström, oravirt@gmail.com, @oravirt
+    - Check mode and diff mode are supported.
+    - Changes made by @ari-stark broke previous module interface.
 '''
 
 EXAMPLES = '''
-# Create a new schema on a remote db by running the module on the controlmachine  (i.e: delegate_to: localhost)
+# Create a new schema on a remote db by running the module on the controlmachine
 oracle_user:
-    hostname: remote-db-server
-    service_name: orcl
-    user: system
-    password: manager
-    schema: myschema
-    schema_password: mypass
-    default_tablespace: test
-    state: present
-    grants: "'create session', create any table'"
+    hostname: "remote-db-server"
+    service_name: "orcl"
+    username: "system"
+    password: "manager"
+    schema_name: "myschema"
+    schema_password: "mypass"
+    default_tablespace: "test"
+    state: "present"
 
-# Create a new schema on a remote db
+# Drop a user on a remote db
 oracle_user:
-    hostname: localhost
-    service_name: orcl
-    user: system
-    password: manager
-    schema: myschema
-    schema_password: mypass
-    default_tablespace: test
-    state: present
-    grants: dba
+    hostname: "remote-db-server"
+    service_name: "orcl"
+    username: "system"
+    password: "manager"
+    schema_name: "myschema"
+    state: "absent"
 
-# Drop a schema on a remote db
-oracle_user: hostname=localhost service_name=orcl user=system password=manager schema=myschema state=absent
-
-
+# Empty a schema on a remote db
+oracle_user:
+    hostname: "remote-db-server"
+    service_name: "orcl"
+    username: "system"
+    password: "manager"
+    schema_name: "myschema"
+    state: "empty"
 '''
 
+RETURN = '''
+ddls:
+    description: Ordered list of DDL requests executed during module execution.
+    returned: always
+    type: list
+    elements: str
+'''
 
-def clean_string(item):
-    item = item.replace("'", "").replace(", ", ",").lstrip(" ").rstrip(",").replace("[", "").replace("]", "")
-
-    return item
-
-
-def clean_list(item):
-    item = [p.replace("'", "").replace(", ", ",").lstrip(" ").rstrip(",").replace("[", "").replace("]", "") for p in
-            item]
-
-    return item
+global module
+global cursor
+global ddls
+global diff
+global dsn
 
 
-# Check if the user/schema exists
-def check_user_exists(cursor, schema):
-    sql = 'select count(*) from dba_users where username = upper(\'%s\')' % schema
-
+def execute_select(sql, params=None):
+    """Executes a select query and return fetched data"""
     try:
-        cursor.execute(sql)
-        result = cursor.fetchone()[0]
-    except cx_Oracle.DatabaseError:
-        return False
-
-    if result > 0:
-        return True
-
-
-# Create the user/schema
-def create_user(module, cursor, schema, schema_password, schema_password_hash, default_tablespace,
-                default_temp_tablespace, profile, authentication_type, state, container, grants):
-    grants_list = []
-    if not schema:
-        msg = 'Error: Missing schema name'
-        module.fail_json(msg=msg, Changed=False)
-
-    if not schema_password and authentication_type == 'password':
-        if not schema_password_hash:
-            msg = 'Error: Missing schema password or password hash'
-            module.fail_json(msg=msg, Changed=False)
-
-    if authentication_type == 'password':
-        if schema_password_hash:
-            sql = 'create user %s identified by values \'%s\' ' % (schema, schema_password_hash)
+        if params:
+            return cursor.execute(sql, params).fetchall()
         else:
-            sql = 'create user %s identified by "%s" ' % (schema, schema_password)
-    elif authentication_type == 'global':
-        sql = 'create user %s identified globally ' % schema
-    elif authentication_type == 'external':
-        sql = 'create user %s identified externally ' % schema
-    else:
-        sql = ''
+            return cursor.execute(sql).fetchall()
+    except cx_Oracle.DatabaseError as e:
+        error = e.args[0]
+        module.fail_json(msg=error.message, code=error.code, request=sql)
 
-    if default_tablespace:
-        sql += 'default tablespace %s ' % default_tablespace
-        sql += 'quota unlimited on %s ' % default_tablespace
 
-    if default_temp_tablespace:
-        sql += 'temporary tablespace %s ' % default_temp_tablespace
-
-    if profile:
-        sql += ' profile %s' % profile
-
-    if container:
-        sql += ' container=%s' % container
-
-    if state == 'locked':
-        sql += ' account lock'
-
-    if state == 'expired':
-        sql += ' password expire'
-
+def execute_ddl(request):
+    """Execute a DDL request if not in check_mode"""
     try:
-        cursor.execute(sql)
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg = 'Blergh, something went wrong while creating the schema - %s sql: %s' % (error.message, sql)
-        module.fail_json(msg=msg, Changed=False)
-
-    # Add grants to user if explicitly set. If not, only 'create session' is granted
-    if grants:
-        grants = clean_list(grants)
-        for p in grants:
-            grants_list.append(p)
-        grants = ','.join(grants_list)
-
-        sql = 'grant %s to %s ' % (grants, schema)
-        if container:
-            sql += ' container=%s' % container
-        # else:
-        #     sql = 'grant create session to %s '% schema
-
-        try:
-            cursor.execute(sql)
-        except cx_Oracle.DatabaseError as exc:
-            error, = exc.args
-            msg = 'Blergh, something went wrong while adding grants to the schema - %s sql: %s' % (error.message, sql)
-            module.fail_json(msg=msg, Changed=False)
-
-    return True
+        if not module.check_mode:
+            cursor.execute(request)
+            ddls.append(request)
+        else:
+            ddls.append('--' + request)
+    except cx_Oracle.DatabaseError as e:
+        error = e.args[0]
+        module.fail_json(msg=error.message, code=error.code, request=request, ddls=ddls)
 
 
-# Get the current password hash for the user
-def get_user_password_hash(module, cursor, schema):
-    sql = 'select password from sys.user$ where name = upper(\'%s\')' % schema
-    try:
-        cursor.execute(sql)
-        return cursor.fetchone()[0]
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg = error.message + ': sql: ' + sql
-        module.fail_json(msg=msg)
+def get_existing_user(schema_name):
+    """Check if the user/schema exists"""
+    data = execute_select('select username,'
+                          '       account_status,'
+                          '       default_tablespace,'
+                          '       temporary_tablespace,'
+                          '       profile,'
+                          '       authentication_type,'
+                          '       oracle_maintained'
+                          '  from dba_users'
+                          ' where username = upper(:schema_name)', {'schema_name': schema_name})
+    if data:
+        row = data[0]
+        state = 'present'
+        expired = 'EXPIRED' in row[1]
+        locked = 'LOCKED' in row[1]
+        default_tablespace = row[2]
+        temporary_tablespace = row[3]
+        profile = row[4]
+        authentication_type = {'EXTERNAL': 'external', 'GLOBAL': 'global', 'NONE': None, 'PASSWORD': 'password'}[row[5]]
+        oracle_maintained = row[6] == 'Y'
 
-
-# Modify the user/schema
-def modify_user(module, cursor, schema, schema_password, schema_password_hash, default_tablespace,
-                default_temp_tablespace, update_password, profile, authentication_type, state):
-    sql_get_curr_def = 'select lower(account_status)'
-    sql = 'alter user %s' % schema
-
-    if update_password == 'always':
+        diff['before']['state'] = state
+        diff['before']['expired'] = expired
+        diff['before']['locked'] = locked
+        diff['before']['default_tablespace'] = default_tablespace
+        diff['before']['temporary_tablespace'] = temporary_tablespace
+        diff['before']['profile'] = profile
+        diff['before']['authentication_type'] = authentication_type
         if authentication_type == 'password':
-            if schema_password_hash:
-                sql += ' identified by values \'%s\'' % schema_password_hash
-            elif schema_password:
-                sql += ' identified by "%s" ' % schema_password
-        elif authentication_type == 'external':
-            sql += ' identified externally '
-            sql_get_curr_def += ' ,lower(authentication_type)'
-        elif authentication_type == 'global':
-            sql += ' identified globally '
-            sql_get_curr_def += ' ,lower(authentication_type)'
+            diff['before']['schema_password'] = '**'
 
-    if default_tablespace:
-        sql += ' default tablespace %s' % default_tablespace
-        sql += ' quota unlimited on %s ' % default_tablespace
-        sql_get_curr_def += ' ,lower(default_tablespace)'
+        return {'username': schema_name, 'state': state, 'expired': expired, 'locked': locked,
+                'default_tablespace': default_tablespace, 'temporary_tablespace': temporary_tablespace,
+                'profile': profile, 'authentication_type': authentication_type, 'oracle_maintained': oracle_maintained}
 
-    if default_temp_tablespace:
-        sql += ' temporary tablespace %s ' % default_temp_tablespace
-        sql_get_curr_def += ' ,lower(temporary_tablespace)'
-
-    if profile:
-        sql += ' profile %s ' % profile
-        sql_get_curr_def += ' ,lower(profile)'
-
-    want_account_status = ''
-    if state == 'present' or state == 'unlocked':
-        want_account_status = 'open'
-        sql += ' account unlock'
-
-    elif state == 'locked':
-        want_account_status = state
-        sql += ' account lock'
-
-    elif state == 'expired':
-        want_account_status = state
-        sql += ' password expire'
-
-    wanted_list = [want_account_status]
-
-    if authentication_type != 'password' and update_password == 'always':
-        wanted_list.append(authentication_type)
-
-    if default_tablespace:
-        wanted_list.append(default_tablespace)
-
-    if default_temp_tablespace:
-        wanted_list.append(default_temp_tablespace)
-
-    if profile:
-        wanted_list.append(profile)
-
-    sql_get_curr_def += ' from dba_users where username = upper(\'%s\')' % schema
-
-    if update_password == 'always':
-        old_pw_hash = get_user_password_hash(module, cursor, schema)
-
-    curr_defaults = execute_sql_get(module, cursor, sql_get_curr_def)
-    curr_defaults = [list(t) for t in curr_defaults]
-
-    if schema_password_hash:
-        if update_password == 'always':
-            if (wanted_list in curr_defaults) and (old_pw_hash == schema_password_hash):
-                # Everything is kosher, exit changed=False
-                module.exit_json(msg='The schema (%s) is in the intented state' % schema, changed=False)
-            else:
-                # Make the change and exit changed=True
-                execute_sql(module, cursor, sql)
-                module.exit_json(msg='Successfully altered the user (%s)' % schema, changed=True)
-        else:
-            if wanted_list in curr_defaults:
-                module.exit_json(msg='The schema (%s) is in the intented state' % schema, changed=False)
-            else:
-                # Make the change and exit changed=True
-                execute_sql(module, cursor, sql)
-                module.exit_json(msg='Successfully altered the user (%s)' % schema, changed=True)
     else:
-        if wanted_list in curr_defaults:
-            if update_password == 'always':
-                # change everything and compare hash pre/post. If same => exit change=False else exit change=True
-                execute_sql(module, cursor, sql)
-                new_pw_hash = get_user_password_hash(module, cursor, schema)
-                if new_pw_hash == old_pw_hash:
-                    module.exit_json(msg='The schema (%s) is in the intented state' % schema, changed=False)
-                else:
-                    module.exit_json(msg='Successfully altered the user (%s)' % schema, changed=True)
-            else:
-                module.exit_json(msg='The schema (%s) is in the intented state' % schema, changed=False)
-        else:
-            # do the complete change -> exit with change=True
-            execute_sql(module, cursor, sql)
-            module.exit_json(msg='Successfully altered the user (%s)' % schema, changed=True)
-
-    return True
+        diff['before']['state'] = 'absent'
+        return None
 
 
-# Run the actual modification
-def execute_sql(module, cursor, sql):
+# Check if password has changed
+def has_password_changed(schema_name, schema_password):
+    connection_parameters = {'user': schema_name, 'password': schema_password, 'dsn': dsn}
+    # Connecting
     try:
-        cursor.execute(sql)
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg = 'Blergh, something went wrong while executing sql - %s sql: %s' % (error.message, sql)
-        module.fail_json(msg=msg, changed=False)
+        cx_Oracle.connect(**connection_parameters)
         return False
-
-    return True
-
-
-def execute_sql_get(module, cursor, sql):
-    try:
-        cursor.execute(sql)
-        return cursor.fetchall()
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg = error.message + ': sql: ' + sql
-        module.fail_json(msg=msg)
+    except cx_Oracle.DatabaseError as e:
+        error = e.args[0]
+        return error.code == 1017  # invalid username/password; logon denied
 
 
-# Drop the user
-def drop_user(module, cursor, schema):
-    black_list = ['sys', 'system', 'dbsnmp']
-    if schema.lower() in black_list:
-        msg = 'Trying to drop an internal user: %s. Not allowed' % schema
-        module.fail_json(msg=msg, changed=False)
+def ensure_present(schema_name, authentication_type, schema_password, default_tablespace, temporary_tablespace,
+                   profile, locked, expired, empty):
+    """Create or modify the user"""
+    prev_user = get_existing_user(schema_name)
 
-    sql = 'drop user %s cascade' % schema
+    if prev_user:
+        changed = False
+        emptied = False
 
-    try:
-        cursor.execute(sql)
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg = 'Blergh, something went wrong while dropping the schema - %s sql: %s' % (error.message, sql)
-        module.fail_json(msg=msg, changed=False)
+        # Values are not changed by default, so after should be same as before
+        diff['after']['authentication_type'] = diff['before']['authentication_type']
+        diff['after']['default_tablespace'] = diff['before']['default_tablespace']
+        diff['after']['expired'] = diff['before']['expired']
+        diff['after']['locked'] = diff['before']['locked']
+        diff['after']['profile'] = diff['before']['profile']
+        diff['after']['temporary_tablespace'] = diff['before']['temporary_tablespace']
 
-    return True
+        sql = 'alter user %s ' % schema_name
+        if authentication_type and authentication_type != prev_user['authentication_type']:
+            if authentication_type == 'external':
+                sql += 'identified externally '
+            elif authentication_type == 'global':
+                sql += 'identified globally '
+            elif authentication_type == 'password':
+                sql += 'identified by "%s" ' % schema_password
+                diff['after']['schema_password'] = '*'
+            else:
+                sql += 'no authentication '
+            diff['after']['authentication_type'] = authentication_type
+            changed = True
+
+        if default_tablespace and default_tablespace.lower() != prev_user['default_tablespace'].lower():
+            sql += 'default tablespace %s quota unlimited on %s ' % (default_tablespace, default_tablespace)
+            diff['after']['default_tablespace'] = default_tablespace
+            changed = True
+
+        if temporary_tablespace and temporary_tablespace.lower() != prev_user['temporary_tablespace'].lower():
+            sql += 'temporary tablespace %s ' % temporary_tablespace
+            diff['after']['temporary_tablespace'] = temporary_tablespace
+            changed = True
+
+        if profile and profile.lower() != prev_user['profile'].lower():
+            sql += 'profile %s ' % profile
+            diff['after']['profile'] = profile
+            changed = True
+
+        if locked is not None and locked != prev_user['locked']:
+            sql += 'account %s ' % ('lock' if locked else 'unlock')
+            diff['after']['locked'] = locked
+            changed = True
+
+        if expired is True and expired != prev_user['expired']:
+            sql += 'password expire '
+            diff['after']['expired'] = expired
+            changed = True
+
+        # If a password is defined and authentication type hasn't changed, we have to check :
+        # - if account must be unexpire
+        # - if password has changed
+        if schema_password and authentication_type == prev_user['authentication_type']:
+            # Unexpire account by defining a password
+            if expired is False and expired != prev_user['expired']:
+                sql += 'identified by "%s" ' % schema_password
+                diff['after']['expired'] = expired
+                diff['after']['password'] = '*'
+                changed = True
+            elif has_password_changed(schema_name, schema_password):
+                sql += 'identified by "%s" ' % schema_password
+                diff['after']['password'] = '*'
+                changed = True
+
+        if empty:
+            rows = execute_select(
+                "select object_name, object_type"
+                "  from all_objects"
+                " where object_type in('TABLE', 'VIEW', 'PACKAGE', 'PROCEDURE', 'FUNCTION', 'SEQUENCE',"
+                "                      'SYNONYM', 'TYPE', 'DATABASE LINK', 'TABLE PARTITION')"
+                "   and owner = '%s'" % schema_name.upper())
+
+            for row in rows:
+                object_name = row[0]
+                object_type = row[1]
+                execute_ddl('drop %s %s."%s" %s' % (
+                    object_type, schema_name, object_name, 'cascade constraints' if object_type == 'TABLE' else ''))
+
+            if len(rows) != 0:
+                emptied = True
+
+        if changed or emptied:
+            if changed:
+                execute_ddl(sql)
+            module.exit_json(msg='User %s changed and/or schema emptied.' % schema_name, changed=True, diff=diff,
+                             ddls=ddls)
+        else:
+            module.exit_json(msg='User %s already exists.' % schema_name, changed=False, diff=diff, ddls=ddls)
+    else:
+        sql = 'create user %s ' % schema_name
+        if authentication_type == 'external':
+            sql += 'identified externally '
+        elif authentication_type == 'global':
+            sql += 'identified globally '
+        elif authentication_type == 'password':
+            sql += 'identified by "%s" ' % schema_password
+        else:
+            sql += 'no authentication '
+        if default_tablespace:
+            sql += 'default tablespace %s quota unlimited on %s ' % (default_tablespace, default_tablespace)
+        if temporary_tablespace:
+            sql += 'temporary tablespace %s ' % temporary_tablespace
+        if profile:
+            sql += 'profile %s ' % profile
+        if locked:
+            sql += 'account lock '
+        if expired:
+            sql += 'password expire '
+
+        execute_ddl(sql)
+
+        module.exit_json(msg='User %s has been created.' % schema_name, changed=True, diff=diff, ddls=ddls)
+
+
+def ensure_absent(schema_name):
+    """Drop the user if it exists"""
+    prev_user = get_existing_user(schema_name)
+
+    if prev_user and prev_user['oracle_maintained']:
+        module.fail_json(msg='Cannot drop a system user.', changed=False)
+    elif prev_user:
+        execute_ddl('drop user %s cascade' % schema_name)
+        module.exit_json(msg='User %s dropped.' % schema_name, changed=True, diff=diff, ddls=ddls)
+    else:
+        module.exit_json(msg="User %s doesn't exist." % schema_name, changed=False, diff=diff, ddls=ddls)
 
 
 def main():
+    global module
+    global cursor
+    global diff
+    global ddls
+    global dsn
+
     module = AnsibleModule(
         argument_spec=dict(
-            oracle_home=dict(required=False, aliases=['oh']),
-            hostname=dict(default='localhost'),
+            authentication_type=dict(type='str', required=False,
+                                     choices=['external', 'global', 'no_authentication', 'password']),
+            default_tablespace=dict(type='str', default=None),
+            expired=dict(type='bool', default=None),
+            hostname=dict(type='str', default='localhost'),
+            locked=dict(type='bool', default=None),
+            mode=dict(type='str', default='normal', choices=['normal', 'sysdba']),
+            oracle_home=dict(type='str', required=False),
+            password=dict(type='str', required=False, no_log=True),
             port=dict(type='int', default=1521),
-            service_name=dict(required=True, aliases=['tns']),
-            user=dict(required=False, aliases=['username']),
-            password=dict(required=False, no_log=True),
-            mode=dict(default='normal', choices=["normal", "sysdba"]),
-            schema=dict(default=None, aliases=['name']),
-            schema_password=dict(default=None, no_log=True),
-            schema_password_hash=dict(default=None, no_log=True),
-            state=dict(default="present", choices=["present", "absent", "locked", "unlocked", "expired"]),
-            default_tablespace=dict(default=None),
-            default_temp_tablespace=dict(default=None),
-            update_password=dict(default='always', choices=['on_create', 'always']),
-            profile=dict(default=None),
-            authentication_type=dict(default='password', choices=['password', 'external', 'global']),
-            container=dict(default=None),
-            grants=dict(default=None, type="list")
-
+            profile=dict(type='str', default=None),
+            schema_name=dict(type='str', required=True, aliases=['name']),
+            schema_password=dict(type='str', default=None, no_log=True),
+            service_name=dict(type='str', required=True, aliases=['tns']),
+            state=dict(type='str', default='present', choices=['absent', 'empty', 'present']),
+            temporary_tablespace=dict(type='str', default=None),
+            username=dict(type='str', required=False, aliases=['user']),
         ),
-        mutually_exclusive=[['schema_password', 'schema_password_hash']]
+        supports_check_mode=True,
     )
 
-    oracle_home = module.params["oracle_home"]
-    hostname = module.params["hostname"]
-    port = module.params["port"]
-    service_name = module.params["service_name"]
-    user = module.params["user"]
-    password = module.params["password"]
-    mode = module.params["mode"]
-    schema = module.params["schema"]
-    schema_password = module.params["schema_password"]
-    schema_password_hash = module.params["schema_password_hash"]
-    state = module.params["state"]
-    default_tablespace = module.params["default_tablespace"]
-    default_temp_tablespace = module.params["default_temp_tablespace"]
-    update_password = module.params["update_password"]
-    profile = module.params["profile"]
-    authentication_type = module.params["authentication_type"]
-    container = module.params["container"]
-    grants = module.params["grants"]
+    authentication_type = module.params['authentication_type']
+    default_tablespace = module.params['default_tablespace']
+    expired = module.params['expired']
+    hostname = module.params['hostname']
+    locked = module.params['locked']
+    mode = module.params['mode']
+    oracle_home = module.params['oracle_home']
+    password = module.params['password']
+    port = module.params['port']
+    profile = module.params['profile']
+    schema_name = module.params['schema_name']
+    schema_password = module.params['schema_password']
+    service_name = module.params['service_name']
+    state = module.params['state']
+    temporary_tablespace = module.params['temporary_tablespace']
+    username = module.params['username']
 
-    if not cx_oracle_exists:
-        module.fail_json(
-            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick."
-                " If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+    # Transforming parameters
+    if schema_password:
+        authentication_type = 'password'
 
-    if oracle_home is not None:
-        os.environ['ORACLE_HOME'] = oracle_home.rstrip('/')
+    if oracle_home:
+        os.environ['ORACLE_HOME'] = oracle_home
 
-    wallet_connect = '/@%s' % service_name
+    # Setting connection
+    connection_parameters = {}
+    if username and password:
+        connection_parameters['user'] = username
+        connection_parameters['password'] = password
+        connection_parameters['dsn'] = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
+    else:  # Using Oracle wallet
+        connection_parameters['dsn'] = service_name
+
+    if mode == 'sysdba':
+        connection_parameters['mode'] = cx_Oracle.SYSDBA
+
+    # Connecting
     try:
-        if not user and not password:  # If neither user or password is supplied, the use of an oracle wallet is assumed
-            if mode == 'sysdba':
-                connect = wallet_connect
-                conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
-            else:
-                connect = wallet_connect
-                conn = cx_Oracle.connect(wallet_connect)
+        connection = cx_Oracle.connect(**connection_parameters)
+        cursor = connection.cursor()
+    except cx_Oracle.DatabaseError as e:
+        error = e.args[0]
+        module.fail_json(msg=error.message, code=error.code)
 
-        elif user and password:
-            if mode == 'sysdba':
-                dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-                connect = dsn
-                conn = cx_Oracle.connect(user, password, dsn, mode=cx_Oracle.SYSDBA)
-            else:
-                dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-                connect = dsn
-                conn = cx_Oracle.connect(user, password, dsn)
+    dsn = connection_parameters['dsn']
 
-        elif not user or not password:
-            module.fail_json(msg='Missing username or password for cx_Oracle')
+    diff = {'before': {'schema_name': schema_name},
+            'after': {'state': state,
+                      'schema_name': schema_name, }}
 
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg = 'Could not connect to database - %s, connect descriptor: %s' % (error.message, connect)
-        module.fail_json(msg=msg, changed=False)
+    ddls = []
 
-    cursor = conn.cursor()
-
-    if state in ('present', 'expired'):
-        if not check_user_exists(cursor, schema):
-            create_user(module, cursor, schema, schema_password, schema_password_hash, default_tablespace,
-                        default_temp_tablespace, profile, authentication_type, state, container, grants)
-            msg = 'The schema %s has been created successfully' % schema
-            module.exit_json(msg=msg, changed=True)
-        else:
-            modify_user(module, cursor, schema, schema_password, schema_password_hash, default_tablespace,
-                        default_temp_tablespace, update_password, profile, authentication_type, state)
-
-    elif state in ('unlocked', 'locked'):
-        if not check_user_exists(cursor, schema):
-            msg = 'The schema %s doesn\'t exist' % schema
-            module.fail_json(msg=msg, changed=False)
-        else:
-            modify_user(module, cursor, schema, schema_password, schema_password_hash, default_tablespace,
-                        default_temp_tablespace, update_password, profile, authentication_type, state)
-
+    if state in ['empty', 'present']:
+        ensure_present(schema_name, authentication_type, schema_password, default_tablespace, temporary_tablespace,
+                       profile, locked, expired, state == 'empty')
     elif state == 'absent':
-        if check_user_exists(cursor, schema):
-            drop_user(module, cursor, schema)
-            msg = 'The schema (%s) has been dropped successfully' % schema
-            module.exit_json(msg=msg, changed=True)
-        else:
-            module.exit_json(msg='The schema (%s) doesn\'t exist' % schema, changed=False)
-
-    module.exit_json(msg='Undhandled exit', changed=False)
+        ensure_absent(schema_name)
 
 
 if __name__ == '__main__':

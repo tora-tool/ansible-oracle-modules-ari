@@ -90,6 +90,14 @@ The Python module `cx_Oracle` needs to be installed on the Ansible host. (`pip i
 - It doesn't support defining default tablespace and other more specific actions.
 - It supports check mode, diff mode and it returns DDL requests executed by the module.
 
+#### oracle_user ####
+
+- This module manages Oracle user/schema.
+- It can create, alter or drop users.
+- It can empty schemas (droping all its content).
+- It can change password of users ; lock/unlock and expire/unexpire accounts.
+- It can't be used to give privileges (refer to oracle_grant).
+
 ### Unchanged modules ###
 
 #### oracle_asmdg ####
@@ -202,10 +210,3 @@ At the moment, Idempotence only applies to the state (present,absent,started, st
 pre-req: cx_Oracle
 
 - Managing DBMS_STATS global preferences
-
-#### oracle_user ####
-
-pre-req: cx_Oracle
-
-- Creates & drops a user.
-- Grants privileges only (can not remove them with oracle_user, use oracle_grants for that)
