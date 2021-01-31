@@ -24,6 +24,7 @@ short_description: Execute arbitrary sql
 description:
     - This module can be used to execute arbitrary SQL queries or PL/SQL blocks against an Oracle database.
     - If the SQL query is a select statement, the result will be returned.
+    - If the script contains dbms_output.put_line(), the output will be returned.
     - Connection is set to autocommit. There is no rollback mechanism implemented.
 version_added: "2.1.0.0"
 author:
@@ -136,20 +137,26 @@ EXAMPLES = '''
 
 RETURN = '''
 data:
-    description: Contains a two dimensionnal array containing the fetched lines and columns of the select query. 
+    description: Contains a two dimensionnal array containing the fetched lines and columns of the select query.
     returned: if I(sql) is a select statement
     type: list
     elements: list
+output_lines:
+    description: Contains the output of scripts made by dbms_output.put_line().
+    return: always, but is empty if I(script) doesn't contain dbms_output.put_line().
+    type: list
+    elements: str
 statements:
     description: Contains a list of SQL statements executed.
     returned: if I(sql) is not a select statement or I(script) is used
     type: list
-    elements: str 
+    elements: str
 '''
 
 global module
 global cursor
 global statements
+global output_lines
 
 
 def execute_select(sql):
@@ -165,7 +172,25 @@ def execute_statement(sql):
     """Executes a query"""
     try:
         if not module.check_mode:
-            cursor.execute(sql)
+            if 'dbms_output.put_line' in sql:
+                cursor.callproc('dbms_output.enable')
+                cursor.execute(sql)
+
+                chunk_size = 100  # Get lines by batch of 100
+                # create variables to hold the output
+                lines_var = cursor.arrayvar(str, chunk_size)  # out variable
+                num_lines_var = cursor.var(int)  # in/out variable
+                num_lines_var.setvalue(0, chunk_size)
+
+                # fetch the text that was added by PL/SQL
+                while True:
+                    cursor.callproc('dbms_output.get_lines', (lines_var, num_lines_var))
+                    num_lines = num_lines_var.getvalue()
+                    output_lines.extend(lines_var.getvalue()[:num_lines])
+                    if num_lines < chunk_size:  # if less lines than the chunk value was fetched, it's the end
+                        break
+            else:
+                cursor.execute(sql)
             statements.append(sql)
         else:
             statements.append('--' + sql)
@@ -196,6 +221,7 @@ def main():
     global module
     global cursor
     global statements
+    global output_lines
 
     module = AnsibleModule(
         argument_spec=dict(
@@ -249,6 +275,7 @@ def main():
         module.fail_json(msg=error.message, code=error.code)
 
     statements = []
+    output_lines = []
 
     if sql:  # Mono statement.
         if re.match(r'^\s*select\s+', sql, re.IGNORECASE):
@@ -259,13 +286,15 @@ def main():
             module.exit_json(msg='DML or DDL statement executed.', changed=True, statements=statements)
     elif not script.startswith('@'):  # Multi statement
         execute_statements(script)
-        module.exit_json(msg='DML or DDL statements executed.', changed=True, statements=statements)
+        module.exit_json(msg='DML or DDL statements executed.', changed=True, statements=statements,
+                         output_lines=output_lines)
     else:  # SQL file
         try:
             file_name = script.lstrip('@')
             with open(file_name, 'r') as f:
                 execute_statements(f.read())
-            module.exit_json(msg='DML or DDL statements executed.', changed=True, statements=statements)
+            module.exit_json(msg='DML or DDL statements executed.', changed=True, statements=statements,
+                             output_lines=output_lines)
         except IOError as e:
             module.fail_json(msg=str(e), changed=False)
 

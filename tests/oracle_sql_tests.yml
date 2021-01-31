@@ -242,4 +242,68 @@
         password: "password"
         mode: "sysdba"
         sql: "drop user foo cascade"
+
+- name: Test output from dbms_output
+  hosts: oracle_container
+  gather_facts: false
+  tags: "test8"
+
+  tasks:
+    - name: execute procedure with dbms_ouput.put_line()
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        script: |
+          begin
+            dbms_output.put_line('This is the cx_Oracle manual');
+            dbms_output.put_line('Demonstrating how to use DBMS_OUTPUT');
+          end;
+          /
+      register: _
+      failed_when: |
+        _.failed or
+        'cx_Oracle manual' not in _.output_lines[0] or
+        'Demonstrating' not in _.output_lines[1]
+
+    - name: execute two procedures with dbms_ouput.put_line()
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        script: |
+          begin
+            dbms_output.put_line('This is the cx_Oracle manual');
+          end;
+          /
+          begin
+            dbms_output.put_line('Demonstrating how to use DBMS_OUTPUT');
+          end;
+          /
+      register: _
+      failed_when: |
+        _.failed or
+        'cx_Oracle manual' not in _.output_lines[0] or
+        'Demonstrating' not in _.output_lines[1]
+
+    - name: execute procedure without dbms_ouput.put_line()
+      local_action:
+        module: oracle_sql
+        service_name: "xepdb1"
+        user: "sys"
+        password: "password"
+        mode: "sysdba"
+        script: |
+          declare
+            foo varchar2(10);
+          begin
+            foo := 'ab';
+          end;
+          /
+      register: _
+      failed_when: _.failed or _.output_lines | length != 0
 ...
