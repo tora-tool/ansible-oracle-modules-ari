@@ -173,7 +173,7 @@ def execute_statement(sql):
     try:
         if not module.check_mode:
             if 'dbms_output.put_line' in sql:
-                cursor.callproc('dbms_output.enable')
+                cursor.callproc('dbms_output.enable', [None])
                 cursor.execute(sql)
 
                 chunk_size = 100  # Get lines by batch of 100
