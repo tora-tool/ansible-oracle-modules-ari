@@ -333,7 +333,7 @@ def ensure_present(schema_name, authentication_type, schema_password, default_ta
                 "  from all_objects"
                 " where object_type in('TABLE', 'VIEW', 'PACKAGE', 'PROCEDURE', 'FUNCTION', 'SEQUENCE',"
                 "                      'SYNONYM', 'TYPE', 'DATABASE LINK', 'TABLE PARTITION')"
-                "   and owner = '%s'" % schema_name.upper())
+                "   and owner = '%s' and generated = 'N'" % schema_name.upper())
 
             for row in rows:
                 object_name = row[0]
