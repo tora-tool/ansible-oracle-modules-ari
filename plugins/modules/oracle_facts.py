@@ -30,9 +30,9 @@ options:
     gather_subset:
         description:
             - Specify the subset to gather.
-            - 'min' and 'database' are aliases and will get the same facts.
-            - 'all' will gather all possible facts.
-            - Every other choice will lead to get 'min' facts and others asked for.
+            - I(min) and 'database' are aliases and will get the same facts.
+            - I(all) will gather all possible facts.
+            - Every other choice will lead to get I(min) facts and others asked for.
         default: all
         type: list
         choices: ['all', 'database', 'instance', 'min', 'option', 'parameter', 'pdb', 'rac', 'redolog', 'tablespace',

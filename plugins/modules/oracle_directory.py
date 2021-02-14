@@ -81,14 +81,14 @@ options:
             - If I(present), directory will be created if it does not exist or modified if the path is different.
             - If I(absent), directory will be dropped if it exists.
         default: 'present'
-        choices: 
+        choices:
             - 'present'
             - 'absent'
         type: 'str'
     username:
         description:
             - Set the login to use to connect the database server.
-            - Must not be set if using Oracle wallet. 
+            - Must not be set if using Oracle wallet.
         required: false
         type: 'str'
 requirements:
@@ -113,7 +113,7 @@ EXAMPLES = '''
 
 RETURN = '''
 ddls:
-    description: Ordered list of DDL requests executed during module execution. 
+    description: Ordered list of DDL requests executed during module execution.
     returned: always
     type: list
     elements: str

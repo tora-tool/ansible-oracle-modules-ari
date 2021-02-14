@@ -35,7 +35,7 @@ options:
     identified_value:
         description:
             - This is the value to use using authentication by password or using a package.
-            - Required if I(identified_method=password) or I(identified_method=application). 
+            - Required if I(identified_method=password) or I(identified_method=application).
         type: str
     hostname:
         description:
