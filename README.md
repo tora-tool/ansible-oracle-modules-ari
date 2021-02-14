@@ -11,16 +11,15 @@ So far, I've :
 1. fixed documentation generation (ansible-doc is now working),
 1. fixed some errors in oracle_user module (thanks to @tekkamanendless),
 1. created an oracle_directory module,
-1. refactored oracle_tablespace module,
-1. started to add tests for changed modules.
+1. refactored some modules (see below),
+1. started to add tests with playbooks for changed modules.
 
 ### What next ? ###
 
 I'm planning to :
 
-1. continue refactoring some modules to implements check mode, diff mode and return ddls executed (oracle-user, oracle-grants, ...),
-1. transform this project in an ansible-galaxy collection to ease is reusability,
-1. maybe add versions number for easier change tracking.
+1. continue refactoring some modules to implements check mode, diff mode and return ddls executed (oracle_user, oracle_grants, ...),
+1. add versions number for easier change tracking.
 
 ### Tests ###
 

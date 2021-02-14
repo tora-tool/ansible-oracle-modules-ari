@@ -2,3 +2,4 @@
 /.idea
 /tests/.coverage
 /**/__pycache__
+/*.tar.gz

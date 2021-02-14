@@ -1,0 +1,20 @@
+namespace: "ari_stark"
+name: "ansible_oracle_modules"
+version: "0.9.0"
+readme: "README.md"
+authors:
+  - "Ari Stark"
+  - "Mikael Sandström <oravirt@gmail.com>"
+description: "Modules for working with Oracle Database"
+license:
+  - "MIT"
+tags:
+  - "oracle"
+repository: "https://github.com/ari-stark/ansible-oracle-modules"
+homepage: "https://github.com/ari-stark/ansible-oracle-modules"
+issues: "https://github.com/ari-stark/ansible-oracle-modules/issues"
+build_ignore:
+  - "/venv"
+  - "/.idea"
+  - "/requirements.txt"
+  - "/*.tar.gz"
