@@ -167,7 +167,7 @@ def execute_statement(sql):
     """Executes a query"""
     try:
         if not module.check_mode:
-            if 'dbms_output.put_line' in sql:
+            if 'dbms_output.put_line' in sql.lower():
                 cursor.callproc('dbms_output.enable', [None])
                 cursor.execute(sql)
 
