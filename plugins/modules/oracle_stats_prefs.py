@@ -1,11 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-ANSIBLE_METADATA = {
-    'metadata_version': '1.1',
-    'status': ['preview'],
-    'supported_by': 'community'
-}
 
 DOCUMENTATION = '''
 ---
@@ -14,7 +9,7 @@ short_description: Manage DBMS_STATS global preferences
 description:
     - Manage DBMS_STATS global preferences
     - Can be run locally on the controlmachine or on a remote host
-version_added: "2.4"
+version_added: "0.8"
 options:
     hostname:
         description:

@@ -12,11 +12,6 @@ import re
 import cx_Oracle
 from ansible.module_utils.basic import AnsibleModule
 
-ANSIBLE_METADATA = {
-    'metadata_version': '1.1',
-    'status': ['preview'],
-    'supported_by': 'community'}
-
 DOCUMENTATION = '''
 ---
 module: oracle_sql
@@ -26,7 +21,7 @@ description:
     - If the SQL query is a select statement, the result will be returned.
     - If the script contains dbms_output.put_line(), the output will be returned.
     - Connection is set to autocommit. There is no rollback mechanism implemented.
-version_added: "2.1.0.0"
+version_added: "0.8"
 author:
     - Mikael Sandström (@oravirt)
     - Ari Stark (@ari-stark)

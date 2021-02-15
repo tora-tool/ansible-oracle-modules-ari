@@ -5,12 +5,6 @@ from socket import gethostname, getfqdn
 
 from ansible.module_utils.basic import *
 
-ANSIBLE_METADATA = {
-    'metadata_version': '1.1',
-    'status': ['preview'],
-    'supported_by': 'community'
-}
-
 DOCUMENTATION = '''
 ---
 module: oracle_gi_facts
@@ -18,7 +12,7 @@ short_description: Returns some facts about Grid Infrastructure environment
 description:
     - Returns some facts about Grid Infrastructure environment
     - Must be run on a remote host
-version_added: "2.4"
+version_added: "0.8"
 options:
     oracle_home:
         description:

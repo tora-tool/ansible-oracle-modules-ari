@@ -8,18 +8,13 @@ import cx_Oracle
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.basic import os
 
-ANSIBLE_METADATA = {
-    'metadata_version': '1.1',
-    'status': ['preview'],
-    'supported_by': 'community'}
-
 DOCUMENTATION = '''
 module: oracle_directory
 short_description: Manage Oracle directory objects
 description:
     - This module manage Oracle directory objects.
     - It can create, replace or drop directories.
-version_added: 2.5
+version_added: "0.9"
 author: Ari Stark (@ari-stark)
 options:
     directory_name:

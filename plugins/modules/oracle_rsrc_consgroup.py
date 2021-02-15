@@ -9,7 +9,7 @@ description:
     - Manage DBMS_RESOURCE_MANAGER consumer groups
     - Can be run locally on the controlmachine or on a remote host
     - For more accurate documentation about attributes, please check Oracle DB documentation about DBMS_RESOURCE_MANAGER
-version_added: "2.2.1"
+version_added: "0.8"
 options:
     hostname:
         description:

@@ -19,7 +19,7 @@ short_description: Manage AWR configuration
 description:
     - Manage AWR configuration
     - Can be run locally on the controlmachine or on a remote host
-version_added: "2.2.1"
+version_added: "0.8"
 options:
     hostname:
         description:

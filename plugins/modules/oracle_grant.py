@@ -9,11 +9,6 @@ import cx_Oracle
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.basic import os
 
-ANSIBLE_METADATA = {
-    'metadata_version': '1.1',
-    'status': ['preview'],
-    'supported_by': 'community'}
-
 DOCUMENTATION = '''
 ---
 module: oracle_grant
@@ -25,7 +20,7 @@ description:
     - "It has 3 possible states: I(present), I(absent) and I(identical).
       States I(present) and I(absent) ensure privileges are present or absent.
       State I(identical) replace privileges with the ones in parameter."
-version_added: "1.9.1"
+version_added: "0.8"
 author:
     - Mikael Sandström (@oravirt)
     - Ari Stark (@ari-stark)

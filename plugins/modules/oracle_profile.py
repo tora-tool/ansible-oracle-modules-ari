@@ -7,7 +7,7 @@ module: oracle_profile
 short_description: Manage profiles in an Oracle database
 description:
     - Manage profiles in an Oracle database
-version_added: "2.4.1.0"
+version_added: "0.8"
 options:
     name:
         description:
@@ -295,7 +295,7 @@ def main():
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
         msg = 'Could not connect to DB: %s, connect descriptor: %s, username: %s, pass: %s' % (
-        error.message, connect, user, password)
+            error.message, connect, user, password)
         module.fail_json(msg=msg, changed=False)
 
     cursor = conn.cursor()

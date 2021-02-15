@@ -7,7 +7,7 @@ module: oracle_services
 short_description: Manage services in an Oracle database
 description:
     - Manage services in an Oracle database
-version_added: "2.1.0.0"
+version_added: "0.8"
 options:
     name:
         description:

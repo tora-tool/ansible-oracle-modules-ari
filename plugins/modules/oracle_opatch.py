@@ -9,7 +9,7 @@ description: Manage patches in an Oracle environment
     - Manages patches (applies/rolls back)
     - Only manages the opatch part of patching (opatch/opatch auto/opatchauto)
     - If opatchauto is true, the task has to be run as root
-version_added: "2.4.0.0"
+version_added: "0.8"
 options:
     oracle_home:
         description:
@@ -197,9 +197,9 @@ def analyze_patch(module, msg, oracle_home, patch_base, opatchauto):
             command += 'sudo -u %s ' % oh_owner
             opatch_cmd = 'opatch '
             conflcommand = '%s %s/OPatch/opatch prereq CheckConflictAgainstOHWithDetail -ph %s -oh %s' % (
-            command, oracle_home, patch_base, oracle_home)
+                command, oracle_home, patch_base, oracle_home)
             spacecommand = '%s %s/OPatch/opatch prereq CheckSystemSpace -ph %s -oh %s' % (
-            command, oracle_home, patch_base, oracle_home)
+                command, oracle_home, patch_base, oracle_home)
             checks.append(conflcommand)
             checks.append(spacecommand)
 
@@ -209,7 +209,7 @@ def analyze_patch(module, msg, oracle_home, patch_base, opatchauto):
             checks.append(command)
     else:
         conflcommand = '%s/OPatch/opatch prereq CheckConflictAgainstOHWithDetail -ph %s -oh %s' % (
-        oracle_home, patch_base, oracle_home)
+            oracle_home, patch_base, oracle_home)
         spacecommand = '%s/OPatch/opatch prereq CheckSystemSpace -ph %s -oh %s' % (oracle_home, patch_base, oracle_home)
         checks.append(conflcommand)
         checks.append(spacecommand)
@@ -525,7 +525,7 @@ def main():
     if state == 'present' and ocm_response_file is None and LooseVersion(opatch_version) < LooseVersion(
             opatch_version_noocm):
         msg = 'An OCM response file is needed when the opatch version is < %s. Current opatch version: %s' % (
-        opatch_version_noocm, opatch_version)
+            opatch_version_noocm, opatch_version)
         module.fail_json(msg=msg, changed=False)
 
     if state == 'opatchversion':

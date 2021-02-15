@@ -11,11 +11,6 @@ import cx_Oracle
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.basic import os
 
-ANSIBLE_METADATA = {
-    'metadata_version': '1.1',
-    'status': ['preview'],
-    'supported_by': 'community'}
-
 DOCUMENTATION = '''
 module: oracle_tablespace
 short_description: Manage Oracle tablespace objects
@@ -25,7 +20,7 @@ description:
     - It supports permanent, undo and temporary tablespaces.
     - It supports online/offline state and read only/read write state.
     - It doesn't support defining default tablespace and other more specific actions.
-version_added: "1.9.1"
+version_added: "0.8"
 author:
     - Mikael Sandström (@oravirt)
     - Ari Stark (@ari-stark)

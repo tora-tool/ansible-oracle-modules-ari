@@ -5,11 +5,6 @@ import cx_Oracle
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.basic import os
 
-ANSIBLE_METADATA = {
-    'metadata_version': '1.1',
-    'status': ['preview'],
-    'supported_by': 'community'}
-
 DOCUMENTATION = '''
 module: oracle_user
 short_description: Manages Oracle user/schema.
@@ -19,7 +14,7 @@ description:
     - It can empty schemas (droping all its content).
     - It can change password of users ; lock/unlock and expire/unexpire accounts.
     - It can't be used to give privileges (refer to oracle_grant).
-version_added: "1.9.1"
+version_added: "0.8"
 author:
     - Mikael Sandström (@oravirt)
     - Ari Stark (@ari-stark)

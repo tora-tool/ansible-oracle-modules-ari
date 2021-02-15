@@ -9,7 +9,7 @@ module: oracle_asmvol
 short_description: Manage Oracle ASMCMD Volumes
 description:
     - Manage Oracle advm Volumes
-version_added: "2.1.0.0"
+version_added: "0.8"
 options:
     name:
         description:

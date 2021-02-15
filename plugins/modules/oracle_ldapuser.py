@@ -7,7 +7,7 @@ short_description: Syncronises user accounts from LDAP/Active directory to Oracl
 description:
     - Syncronises user accounts from LDAP/Active directory to Oracle database and maps group membership to Oracle roles
     - Can be run locally on the controlmachine or on a remote host
-version_added: "2.2.0"
+version_added: "0.8"
 options:
     hostname:
         description:

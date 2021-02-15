@@ -9,11 +9,6 @@ import cx_Oracle
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.basic import os
 
-ANSIBLE_METADATA = {
-    'metadata_version': '1.1',
-    'status': ['preview'],
-    'supported_by': 'community'}
-
 DOCUMENTATION = '''
 module: oracle_role
 short_description: Manage Oracle role objects.
@@ -21,7 +16,7 @@ description:
     - This module manage Oracle role objects.
     - It handles creation and deletion of roles.
     - It doesn't support changing password. There's no hint to know a password was changed, so no change is made.
-version_added: "1.9.1"
+version_added: "0.8"
 author:
     - Mikael Sandström (@oravirt)
     - Ari Stark (@ari-stark)

@@ -8,7 +8,7 @@ short_description: Manage DBMS_SCHEDULER job windows in Oracle database
 description:
     - Manage DBMS_SCHEDULER job windows in Oracle database
     - Can be run locally on the controlmachine or on a remote host
-version_added: "2.2.1"
+version_added: "0.8"
 options:
     hostname:
         description:
@@ -173,7 +173,7 @@ def main():
     if module.params['duration_min'] is None and module.params['duration_hour'] is None:
         module.fail_json(msg='Either duration_min or duration_hour must be specified', changed=False)
     new_duration_min = module.params['duration_min'] if module.params['duration_min'] else (
-                module.params['duration_hour'] * 60)
+            module.params['duration_hour'] * 60)
     new_duration = timedelta(minutes=new_duration_min)
     if new_duration_min < 1:
         module.fail_json(msg='Invalid window duration', changed=False)

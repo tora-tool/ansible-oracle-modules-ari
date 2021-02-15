@@ -10,11 +10,6 @@ import cx_Oracle
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.basic import os
 
-ANSIBLE_METADATA = {
-    'metadata_version': '1.1',
-    'status': ['preview'],
-    'supported_by': 'community'}
-
 DOCUMENTATION = '''
 ---
 module: oracle_facts
@@ -22,7 +17,7 @@ short_description: Returns some facts about Oracle DB
 description:
     - This module returns some facts about Oracle database.
     - It has several subsets and will gather all subsets by default.
-version_added: "2.2.1"
+version_added: "0.8"
 author:
     - Ilmar Kerm (@ilmarkerm)
     - Ari Stark (@ari-stark)

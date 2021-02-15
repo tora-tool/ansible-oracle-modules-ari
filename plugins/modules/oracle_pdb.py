@@ -18,7 +18,7 @@ description:
       I(pdb_admin_username) or I(plug_file)."
     - The check of the parameters are minimal,
       full responsability is delegated to Oracle to check if parameters are corrects.
-version_added: "2.1.0.0"
+version_added: "0.8"
 author:
     - Mikael Sandström (@oravirt)
     - Ari Stark (@ari-stark)

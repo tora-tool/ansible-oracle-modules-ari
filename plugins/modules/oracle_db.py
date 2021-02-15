@@ -19,7 +19,7 @@ description:
   - If a responsefile is available, that will be used.
     If initparams is defined, those will be attached to the createDatabase command
   - If no responsefile is created, the database will be created based on all other parameters
-version_added: "2.4.0.0"
+version_added: "0.8"
 options:
   oracle_home:
     description:
