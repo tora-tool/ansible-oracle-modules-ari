@@ -8,22 +8,31 @@ This project is a fork from https://github.com/oravirt/ansible-oracle-modules ma
 
 So far, I've :
 
-1. fixed documentation generation (ansible-doc is now working),
-1. fixed some errors in oracle_user module (thanks to @tekkamanendless),
+1. fixed documentation generation (ansible-doc is now working for every module),
 1. created an oracle_directory module,
-1. refactored some modules (see below),
-1. started to add tests with playbooks for changed modules.
+1. fixed and/or refactored some modules (see below),
+1. started to add tests with playbooks for changed modules,
+1. made these modules a [collection](https://galaxy.ansible.com/ari_stark/ansible_oracle_modules).
 
 ### What next ? ###
 
 I'm planning to :
 
-1. continue refactoring some modules to implements check mode, diff mode and return ddls executed (oracle_user, oracle_grants, ...),
-1. add versions number for easier change tracking.
+1. continue refactoring some modules to implements check mode, diff mode and return ddls executed,
+1. make some module_utils to share code between modules (database connection, handling a request, etc.),
+1. add some new modules (oracle_quota),
+1. maybe add unit tests in Python (to use with ansible-test, but don't know how to do yet).
 
 ### Tests ###
 
-Changes were tested with Ansible 2.8 and Python 3.
+Changes were tested with Ansible 2.9 and Python 3.
+
+Compile and sanity tests (with ansible-test) were run against Python 2.7 and 3.5 to 3.9.
+
+## Usage ##
+
+Theses modules are a collection on Ansible Galaxy.
+The collection page is here : https://galaxy.ansible.com/ari_stark/ansible_oracle_modules.
 
 ## Oracle modules for Ansible ##
 
