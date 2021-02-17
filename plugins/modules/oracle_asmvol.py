@@ -1,7 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from ansible.module_utils.basic import *
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
+from ansible.module_utils.basic import AnsibleModule, os
 
 DOCUMENTATION = '''
 ---
@@ -9,7 +13,7 @@ module: oracle_asmvol
 short_description: Manage Oracle ASMCMD Volumes
 description:
     - Manage Oracle advm Volumes
-version_added: "0.8"
+version_added: "0.8.0"
 options:
     name:
         description:
@@ -57,11 +61,11 @@ author: Mikael Sandström, oravirt@gmail.com, @oravirt
 '''
 
 EXAMPLES = '''
-# Create an ASM volume
-oracle_asmvol: name=acfsvol dg=acfsdg size=100G state=present oh=/u01/app/grid/12.1.0.2/grid sid='+ASM1'
+- name: Create an ASM volume
+  oracle_asmvol: name=acfsvol dg=acfsdg size=100G state=present oh=/u01/app/grid/12.1.0.2/grid sid='+ASM1'
 
-# Delete an ASM volume
-oracle_asmvol: name=acfsvol dg=acfsdg state=absent oh=/u01/app/grid/12.1.0.2/grid sid='+ASM1'
+- name: Delete an ASM volume
+  oracle_asmvol: name=acfsvol dg=acfsdg state=absent oh=/u01/app/grid/12.1.0.2/grid sid='+ASM1'
 
 '''
 

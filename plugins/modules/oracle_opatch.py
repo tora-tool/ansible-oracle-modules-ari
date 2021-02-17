@@ -1,6 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
 DOCUMENTATION = '''
 ---
 module: oracle_opatch
@@ -9,7 +13,7 @@ description: Manage patches in an Oracle environment
     - Manages patches (applies/rolls back)
     - Only manages the opatch part of patching (opatch/opatch auto/opatchauto)
     - If opatchauto is true, the task has to be run as root
-version_added: "0.8"
+version_added: "0.8.0"
 options:
     oracle_home:
         description:
@@ -570,7 +574,7 @@ def main():
     module.exit_json(msg="Unhandled exit", changed=False)
 
 
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule, os, pwd, subprocess
 
 if __name__ == '__main__':
     main()

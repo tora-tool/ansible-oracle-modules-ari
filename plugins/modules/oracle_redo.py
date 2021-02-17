@@ -1,6 +1,9 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
 
 DOCUMENTATION = '''
 ---
@@ -9,7 +12,7 @@ short_description: Manage Oracle redo related things
 description:
     - Manage redogroups
     - Can be run locally on the controlmachine or on a remote host
-version_added: "0.8"
+version_added: "0.8.0"
 options:
     hostname:
         description:
@@ -345,7 +348,7 @@ def main():
     module.exit_json(msg=msg, changed=changed)
 
 
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule
 
 if __name__ == '__main__':
     main()

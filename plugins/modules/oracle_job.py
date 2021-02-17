@@ -1,6 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
 DOCUMENTATION = '''
 ---
 module: oracle_job
@@ -8,7 +12,7 @@ short_description: Manage DBMS_SCHEDULER jobs in Oracle database
 description:
     - Manage DBMS_SCHEDULER jobs in an Oracle database
     - Can be run locally on the controlmachine or on a remote host
-version_added: "0.8"
+version_added: "0.8.0"
 options:
     hostname:
         description:
@@ -401,9 +405,9 @@ def main():
     # Check for required modules
     if not cx_oracle_exists:
         module.fail_json(
-            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick.")
     # Check input parameters
-    re_name = re.compile("^[A-Za-z0-9_$#]+\.[A-Za-z0-9_$#]+$")
+    re_name = re.compile(r'^[A-Za-z0-9_$#]+\.[A-Za-z0-9_$#]+$')
     if not re_name.match(module.params['job_name']):
         module.fail_json(msg="Invalid job name")
     job_fullname = module.params['job_name'].upper() if module.params['convert_to_upper'] else module.params['job_name']
@@ -498,7 +502,7 @@ def main():
     module.exit_json(msg=msg[0], changed=changed)
 
 
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule, re
 
 if __name__ == '__main__':
     main()

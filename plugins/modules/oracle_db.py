@@ -1,7 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from ansible.module_utils.basic import *
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
+from ansible.module_utils.basic import AnsibleModule, os, re, subprocess, time
 
 try:
     import cx_Oracle
@@ -19,7 +23,7 @@ description:
   - If a responsefile is available, that will be used.
     If initparams is defined, those will be attached to the createDatabase command
   - If no responsefile is created, the database will be created based on all other parameters
-version_added: "0.8"
+version_added: "0.8.0"
 options:
   oracle_home:
     description:
@@ -219,17 +223,16 @@ author: Mikael Sandström, oravirt@gmail.com, @oravirt
 '''
 
 EXAMPLES = '''
-# Create a DB (non-cdb)
-oracle_db:
-  oh=/u01/app/oracle/12.2.0.1/db1
-  db_name=orclcdb
-  syspw=Oracle_123
-  state=present
-  storage=ASM
-  dfd=+DATA
-  rfd=+DATA
-  default_tablespace_type: bigfile
-
+- name: Create a DB (non-cdb)
+  oracle_db:
+    oh: /u01/app/oracle/12.2.0.1/db1
+    db_name: orclcdb
+    syspw: Oracle_123
+    state: present
+    storage: ASM
+    dfd: +DATA
+    rfd: +DATA
+    default_tablespace_type: bigfile
 
 - hosts: all
   gather_facts: true
@@ -514,6 +517,7 @@ def remove_db(module, msg, oracle_home, db_name, sid, db_unique_name, sys_passwo
 
 def ensure_db_state(module, oracle_home, db_name, db_unique_name, sid, archivelog, force_logging, flashback,
                     default_tablespace_type, default_tablespace, default_temp_tablespace):
+    global israc
     cursor = getconn(module)
     alterdb_sql = 'alter database'
 
@@ -738,7 +742,7 @@ def start_instance(module, oracle_home, db_name, db_unique_name, sid, open_mode,
         (stdout, stderr) = p.communicate(startup_sql.encode('utf-8'))
         rc = p.returncode
         if rc != 0:
-            msg = 'Error - STDOUT: %s, STDERR: %s, COMMAND: %s' % (stdout, stderr, shutdown_sql)
+            msg = 'Error - STDOUT: %s, STDERR: %s, COMMAND: %s' % (stdout, stderr, startup_sql)
             module.fail_json(msg=msg, changed=False)
         else:
             return True

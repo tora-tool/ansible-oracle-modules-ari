@@ -5,9 +5,9 @@
 # Copyright: (c) 2020, Ari Stark <ari.stark@netcourrier.com>
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-import cx_Oracle
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import os
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
 
 DOCUMENTATION = '''
 module: oracle_role
@@ -16,7 +16,7 @@ description:
     - This module manage Oracle role objects.
     - It handles creation and deletion of roles.
     - It doesn't support changing password. There's no hint to know a password was changed, so no change is made.
-version_added: "0.8"
+version_added: "0.8.0"
 author:
     - Mikael Sandström (@oravirt)
     - Ari Stark (@ari-stark)
@@ -90,8 +90,8 @@ notes:
 '''
 
 EXAMPLES = '''
-# Ensure role exists
-oracle_role:
+- name: Ensure role exists
+  oracle_role:
     hostname: remote-db-server
     service_name: orcl
     user: system
@@ -99,8 +99,8 @@ oracle_role:
     role: myrole
     state: present
 
-# Set the password "bar" to a role
-oracle_role:
+- name: Set the password "bar" to a role
+  oracle_role:
     hostname: remote-db-server
     service_name: orcl
     user: system
@@ -110,8 +110,8 @@ oracle_role:
     identified_method: password
     identified_value: bar
 
-# Ensure role doesn't exist
-oracle_role:
+- name: Ensure role doesn't exist
+  oracle_role:
     hostname: localhost
     service_name: orcl
     user: system
@@ -128,10 +128,14 @@ ddls:
     elements: str
 '''
 
-global module
-global cursor
-global diff
-global ddls
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.basic import os
+
+try:
+    HAS_CX_ORACLE = True
+    import cx_Oracle
+except ImportError:
+    HAS_CX_ORACLE = False
 
 
 def execute_select(sql, params=None):
@@ -240,6 +244,9 @@ def main():
                      ['identified_method', 'application', ['identified_value']]],
         supports_check_mode=True,
     )
+
+    if not HAS_CX_ORACLE:
+        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
 
     identified_method = module.params['identified_method']
     identified_value = module.params['identified_value']

@@ -1,13 +1,17 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
 DOCUMENTATION = '''
 ---
 module: oracle_services
 short_description: Manage services in an Oracle database
 description:
     - Manage services in an Oracle database
-version_added: "0.8"
+version_added: "0.8.0"
 options:
     name:
         description:
@@ -98,21 +102,39 @@ author: Mikael Sandström, oravirt@gmail.com, @oravirt
 '''
 
 EXAMPLES = '''
-# Create a service
-oracle_services: name=service1 database_name=db1 state=present
+- name: Create a service
+  oracle_services:
+    name: service1
+    database_name: db1
+    state: present
 
-# Start a service
-oracle_services: name=service1 database_name=db1 state=started
+- name: Start a service
+  oracle_services:
+    name: service1
+    database_name: db1
+    state: started
 
-# Stop a service
-oracle_services: name=service1 database_name=db1 state=stopped
+- name: Stop a service
+  oracle_services:
+    name: service1
+    database_name: db1
+    state: stopped
 
-# Remove a service
-oracle_services: name=service1 database_name=db1 state=absent
+- name: Remove a service
+  oracle_services:
+    name: service1
+    database_name: db1
+    state: absent
 
-# Create a service in a RAC pdb and run it on a subset of nodes/instances
-oracle_services: name=service1 database_name=raccdb oh=/u01/app/oracle/12.1.0.2/db1 pdb=mypdb pi=raccdb1 ai=raccdb2,raccdb3 state=present
-
+- name: Create a service in a RAC pdb and run it on a subset of nodes/instances
+  oracle_services:
+    name: service1
+    database_name: raccdb
+    oh: /u01/app/oracle/12.1.0.2/db1
+    pdb: mypdb
+    pi: raccdb1
+    ai: raccdb2,raccdb3
+    state: present
 '''
 
 try:
@@ -502,7 +524,7 @@ def main():
     module.exit_json(msg="Unhandled exit", changed=False)
 
 
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule, os
 
 if __name__ == '__main__':
     main()

@@ -1,9 +1,13 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
 from socket import gethostname, getfqdn
 
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule, os, re
 
 DOCUMENTATION = '''
 ---
@@ -12,7 +16,7 @@ short_description: Returns some facts about Grid Infrastructure environment
 description:
     - Returns some facts about Grid Infrastructure environment
     - Must be run on a remote host
-version_added: "0.8"
+version_added: "0.8.0"
 options:
     oracle_home:
         description:
@@ -47,7 +51,6 @@ except ImportError:  # pragma: no cover
 
     STDOUT = subprocess.STDOUT
 
-
     def check_output(*popenargs, **kwargs):
         if 'stdout' in kwargs:  # pragma: no cover
             raise ValueError('stdout argument not allowed, '
@@ -64,12 +67,11 @@ except ImportError:  # pragma: no cover
                                                 output=output)
         return output
 
-
     subprocess.check_output = check_output
-
 
     # overwrite CalledProcessError due to `output`
     # keyword not being available (in 2.6)
+
     class CalledProcessError(Exception):
 
         def __init__(self, returncode, cmd, output=None):
@@ -80,7 +82,6 @@ except ImportError:  # pragma: no cover
         def __str__(self):
             return "Command '%s' returned non-zero exit status %d" % (
                 self.cmd, self.returncode)
-
 
     subprocess.CalledProcessError = CalledProcessError
 

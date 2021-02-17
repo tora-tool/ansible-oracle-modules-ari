@@ -13,7 +13,7 @@
         username: "sys"
         password: "password"
         mode: "sysdba"
-        schema: "u_foo"
+        schema_name: "u_foo"
         schema_password: "bar"
 
     - name: create r_foo role
@@ -647,7 +647,7 @@
         username: "sys"
         password: "password"
         mode: "sysdba"
-        schema: "u_foo"
+        schema_name: "u_foo"
         schema_password: "bar"
         state: "absent"
 

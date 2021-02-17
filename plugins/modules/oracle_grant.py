@@ -5,9 +5,9 @@
 # Copyright: (c) 2020, Ari Stark <ari.stark@netcourrier.com>
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-import cx_Oracle
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import os
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
 
 DOCUMENTATION = '''
 ---
@@ -20,7 +20,7 @@ description:
     - "It has 3 possible states: I(present), I(absent) and I(identical).
       States I(present) and I(absent) ensure privileges are present or absent.
       State I(identical) replace privileges with the ones in parameter."
-version_added: "0.8"
+version_added: "0.8.0"
 author:
     - Mikael Sandström (@oravirt)
     - Ari Stark (@ari-stark)
@@ -73,6 +73,7 @@ options:
             - A list containing the system and role privileges.
         default: []
         type: list
+        elements: str
         aliases: ['system_privileges', 'role_privileges']
     service_name:
         description:
@@ -106,8 +107,8 @@ notes:
 '''
 
 EXAMPLES = '''
-# Set privileges to a user (removing existent privileges not in the list)
-oracle_grant:
+- name: Set privileges to a user (removing existent privileges not in the list)
+  oracle_grant:
     service_name: "xepdb1"
     username: "sys"
     password: "password"
@@ -124,8 +125,8 @@ oracle_grant:
             - "write"
             - "execute"
 
-# Append a privilege
-oracle_grant:
+- name: Append a privilege
+  oracle_grant:
     service_name: "xepdb1"
     username: "sys"
     password: "password"
@@ -134,8 +135,8 @@ oracle_grant:
     privileges: "create table"
     state: "present"
 
-# Remove a privilege
-oracle_grant:
+- name: Remove a privilege
+  oracle_grant:
     service_name: "xepdb1"
     username: "sys"
     password: "password"
@@ -153,10 +154,14 @@ ddls:
     elements: str
 '''
 
-global module
-global cursor
-global diff
-global ddls
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.basic import os
+
+try:
+    HAS_CX_ORACLE = True
+    import cx_Oracle
+except ImportError:
+    HAS_CX_ORACLE = False
 
 _PRIVILEGE_SEPARATOR = '::'
 
@@ -358,7 +363,7 @@ def main():
             oracle_home=dict(type='str', required=False),
             password=dict(type='str', required=False, no_log=True),
             port=dict(type='int', default=1521),
-            privileges=dict(type='list', default=[], aliases=['system_privileges', 'role_privileges']),
+            privileges=dict(type='list', elements='str', default=[], aliases=['system_privileges', 'role_privileges']),
             service_name=dict(type='str', required=True),
             state=dict(type='str', default='identical', choices=['identical', 'present', 'absent']),
             username=dict(type='str', required=False),
@@ -366,6 +371,9 @@ def main():
         required_together=[['username', 'password']],
         supports_check_mode=True,
     )
+
+    if not HAS_CX_ORACLE:
+        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
 
     grantee = module.params['grantee']
     hostname = module.params['hostname']

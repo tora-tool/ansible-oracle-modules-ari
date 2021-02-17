@@ -1,9 +1,13 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import cx_Oracle
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import os
+# Copyright: (c) 2014 Mikael Sandström <oravirt@gmail.com>
+# Copyright: (c) 2020, Ari Stark <ari.stark@netcourrier.com>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
 
 DOCUMENTATION = '''
 ---
@@ -18,7 +22,7 @@ description:
       I(pdb_admin_username) or I(plug_file)."
     - The check of the parameters are minimal,
       full responsability is delegated to Oracle to check if parameters are corrects.
-version_added: "0.8"
+version_added: "0.8.0"
 author:
     - Mikael Sandström (@oravirt)
     - Ari Stark (@ari-stark)
@@ -109,6 +113,7 @@ options:
             - This option has meaning only with I(pdb_admin_username).
         default: []
         type: list
+        elements: str
     service_name:
         description:
             - Specify the service name of the database you want to access.
@@ -148,6 +153,8 @@ options:
             - Set the login to use to connect the database server.
             - Must not be set if using Oracle wallet.
         type: str
+        aliases:
+            - user
 requirements:
     - Python module cx_Oracle
     - Oracle basic tools.
@@ -157,8 +164,8 @@ notes:
 '''
 
 EXAMPLES = '''
-# Open a PDB in read write
-oracle_pdb:
+- name: Open a PDB in read write
+  oracle_pdb:
     hostname: "localhost"
     service_name: "XE"
     username: "sys"
@@ -167,8 +174,8 @@ oracle_pdb:
     pdb_name: "XEPDB2"
     state: "opened"
 
-# Open a PDB in read only
-oracle_pdb:
+- name: Open a PDB in read only
+  oracle_pdb:
     hostname: "localhost"
     service_name: "XE"
     username: "sys"
@@ -178,8 +185,8 @@ oracle_pdb:
     state: "opened"
     read_only: yes
 
-# Remove a PDB
-oracle_pdb:
+- name: Remove a PDB
+  oracle_pdb:
     hostname: "localhost"
     service_name: "XE"
     username: "sys"
@@ -188,8 +195,8 @@ oracle_pdb:
     pdb_name: "XEPDB2"
     state: "absent"
 
-# Creates a PDB
-oracle_pdb:
+- name: Creates a PDB
+  oracle_pdb:
     hostname: "localhost"
     service_name: "XE"
     username: "sys"
@@ -202,8 +209,8 @@ oracle_pdb:
     file_name_convert:
         "/opt/oracle/oradata/XE/pdbseed": "/tmp/xepdb2/dbf01"
 
-# Check the PDB exists. Do nothing but return the state of the PDB.
-oracle_pdb:
+- name: Check the PDB exists. Do nothing but return the state of the PDB.
+  oracle_pdb:
     hostname: "localhost"
     service_name: "XE"
     username: "sys"
@@ -212,8 +219,8 @@ oracle_pdb:
     pdb_name: "XEPDB2"
     state: "present"
 
-# Unplug a PDB
-oracle_pdb:
+- name: Unplug a PDB
+  oracle_pdb:
     hostname: "localhost"
     service_name: "XE"
     username: "sys"
@@ -223,8 +230,8 @@ oracle_pdb:
     state: "absent"
     unplug_file: "/tmp/xepdb2.xml"
 
-# Plug in a PDB to a new location
-oracle_pdb:
+- name: Plug in a PDB to a new location
+  oracle_pdb:
     hostname: "localhost"
     service_name: "XE"
     username: "sys"
@@ -257,12 +264,14 @@ read_only:
     type: bool
 '''
 
-global module
-global cursor
-global diff
-global ddls
-global changed
-global existing_pdb
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.basic import os
+
+try:
+    HAS_CX_ORACLE = True
+    import cx_Oracle
+except ImportError:
+    HAS_CX_ORACLE = False
 
 
 def execute_select(sql, params=None):
@@ -399,7 +408,7 @@ def main():
             plug_file=dict(type='str', required=False),
             port=dict(type='int', default=1521),
             read_only=dict(type='bool', default=False),
-            roles=dict(type='list', default=[]),
+            roles=dict(type='list', elements='str', default=[]),
             service_name=dict(type='str', required=True, aliases=['cdb_name']),
             snapshot_copy=dict(type='bool', default=False),
             state=dict(type='str', default='opened', choices=['absent', 'closed', 'opened', 'present']),
@@ -413,6 +422,9 @@ def main():
         mutually_exclusive=[['pdb_admin_username', 'clone_from', 'plug_file']],
         supports_check_mode=True,
     )
+
+    if not HAS_CX_ORACLE:
+        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
 
     clone_from = module.params['clone_from']
     file_dest = module.params['file_dest']

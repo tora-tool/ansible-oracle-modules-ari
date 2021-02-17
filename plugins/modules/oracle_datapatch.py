@@ -1,7 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from ansible.module_utils.basic import *
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
+from ansible.module_utils.basic import AnsibleModule, os, re, subprocess
 
 try:
     import cx_Oracle
@@ -18,7 +22,7 @@ description:
     - Create/delete a database using dbca
     - If a responsefile is available, that will be used. If initparams is defined, those will be attached to the createDatabase command
     - If no responsefile is created, the database will be created based on all other parameters
-version_added: "0.8"
+version_added: "0.8.0"
 options:
     oracle_home:
         description:
@@ -268,12 +272,11 @@ def main():
         module.fail_json(msg=msg)
 
     # Connection details for database
-    if service_name is not None:
-        service_name = service_name
-    elif db_unique_name is not None:
-        service_name = db_unique_name
-    else:
-        service_name = db_name
+    if service_name is None:
+        if db_unique_name is not None:
+            service_name = db_unique_name
+        else:
+            service_name = db_name
     # Get the Oracle version
     major_version = get_version(module, oracle_home)
     if check_db_exists(module, oracle_home, db_name, sid, db_unique_name):

@@ -309,7 +309,7 @@
       register: _
       failed_when: |
         _.oracle_facts.redologs | length == 0 or
-        _.oracle_facts.redologs[0].status != 'CURRENT'
+        _.oracle_facts.redologs[0].status not in ('CURRENT', 'INACTIVE')
 
 - name: Test tablespace subset
   hosts: oracle_container

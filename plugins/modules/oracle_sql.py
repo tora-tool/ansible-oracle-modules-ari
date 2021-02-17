@@ -5,12 +5,9 @@
 # Copyright: (c) 2020, Ari Stark <ari.stark@netcourrier.com>
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
+from __future__ import absolute_import, division, print_function
 
-import os
-import re
-
-import cx_Oracle
-from ansible.module_utils.basic import AnsibleModule
+__metaclass__ = type
 
 DOCUMENTATION = '''
 ---
@@ -21,7 +18,7 @@ description:
     - If the SQL query is a select statement, the result will be returned.
     - If the script contains dbms_output.put_line(), the output will be returned.
     - Connection is set to autocommit. There is no rollback mechanism implemented.
-version_added: "0.8"
+version_added: "0.8.0"
 author:
     - Mikael Sandström (@oravirt)
     - Ari Stark (@ari-stark)
@@ -138,7 +135,7 @@ data:
     elements: list
 output_lines:
     description: Contains the output of scripts made by dbms_output.put_line().
-    return: always, but is empty if I(script) doesn't contain dbms_output.put_line().
+    returned: always, but is empty if I(script) doesn't contain dbms_output.put_line().
     type: list
     elements: str
 statements:
@@ -148,10 +145,15 @@ statements:
     elements: str
 '''
 
-global module
-global cursor
-global statements
-global output_lines
+import re
+
+from ansible.module_utils.basic import AnsibleModule, os
+
+try:
+    HAS_CX_ORACLE = True
+    import cx_Oracle
+except ImportError:
+    HAS_CX_ORACLE = False
 
 
 def execute_select(sql):
@@ -234,6 +236,9 @@ def main():
         required_together=[['username', 'password']],
         supports_check_mode=True,
     )
+
+    if not HAS_CX_ORACLE:
+        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
 
     hostname = module.params['hostname']
     mode = module.params['mode']

@@ -1,13 +1,17 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
 DOCUMENTATION = '''
 module: oracle_ldapuser
-short_description: Syncronises user accounts from LDAP/Active directory to Oracle database and maps group membership to Oracle roles
+short_description: Syncronises user accounts from LDAP/Active directory to Oracle database
 description:
     - Syncronises user accounts from LDAP/Active directory to Oracle database and maps group membership to Oracle roles
     - Can be run locally on the controlmachine or on a remote host
-version_added: "0.8"
+version_added: "0.8.0"
 options:
     hostname:
         description:
@@ -55,7 +59,8 @@ options:
     user_profile:
         description:
             - Profile for syncronised user
-            - Must be dedicated profile for this syncronization process, since this is the only way to detect which users should be locked/dropped
+            - Must be dedicated profile for this syncronization process,
+              since this is the only way to detect which users should be locked/dropped
         required: false
         default: LDAP_USER
     user_default_password:
@@ -110,9 +115,10 @@ options:
         choices: ['lock','drop']
     group_role_map:
         description:
-            - Each user can be granted additional roles based on LDAP group membership, this parameter describes the relationship between group LDAP DN and Oracle group name
+            - Each user can be granted additional roles based on LDAP group membership,
+              this parameter describes the relationship between group LDAP DN and Oracle group name
             - Each list item must be DICT with elements dn and groups
-            - 'Example list item: {dn: "CN=prod_db_reader,OU=Security Groups,DC=domain,DC=int", group: "prod_db_reader"}'
+            - 'Example list item: {dn:"CN=prod_db_reader,OU=Security Groups,DC=domain,DC=int",group:"prod_db_reader"}'
         required: false
         type: list of dicts
 notes:
@@ -141,8 +147,10 @@ EXAMPLES = '''
         ldap_bindpassword: HelloWorld123
         ldap_user_basedn: OU=Users,DC=domain,DC=int
         #user_default_password: Oracle123
-        # The following filter means that objectClass is person, member of one specific group, but not COMPUTER and account is not disabled
-        ldap_user_filter: (&(objectClass=person)(memberOf=CN=prod_db,OU=Security Groups,DC=domain,DC=int)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(!(objectClass=COMPUTER)))
+        # The following filter means that objectClass is person, member of one specific group,
+        # but not COMPUTER and account is not disabled
+        ldap_user_filter: |
+            (&(objectClass=person)(memberOf=CN=prod_db,OU=Security Groups,DC=domain,DC=int)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(!(objectClass=COMPUTER)))
         #ldap_user_filter: (sAMAccountName=*prod*)
         ldap_username_attribute: sAMAccountName
         user_profile: LDAP_USER
@@ -246,13 +254,15 @@ def main():
     # Check input variables
     if module.params['user_profile'].upper() == 'DEFAULT':
         module.fail_json(
-            msg='Please use a dedicated profile for LDAP users, since this is the only method of detecting if user has been deleted from LDAP and should also be closed in database side.')
+            msg='Please use a dedicated profile for LDAP users,'
+                ' since this is the only method of detecting if user has been deleted from LDAP'
+                ' and should also be closed in database side.')
     if module.params['user_default_tablespace'].upper() in ['SYSTEM', 'SYSAUX']:
         module.fail_json(msg='no No NO! Choose a proper non-system tablespace for users.')
     # Check for required modules
     if not cx_oracle_exists:
         module.fail_json(
-            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick.")
     if not ldap_module_exists:
         module.fail_json(msg="The ldap module is required. 'pip install ldap' should do the trick.")
     # Connect to LDAP
@@ -277,8 +287,8 @@ def main():
     mode = module.params["mode"]
     wallet_connect = '/@%s' % service_name
     try:
-        if (
-                not user and not password):  # If neither user or password is supplied, the use of an oracle wallet is assumed
+        # If neither user or password is supplied, the use of an oracle wallet is assumed
+        if not user and not password:
             if mode == 'sysdba':
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
@@ -399,7 +409,9 @@ def main():
               v_sql VARCHAR2(200);
           BEGIN
               v_sql:= 'CREATE USER '||p_username||
-                  ' IDENTIFIED '||case when v_default_password is null then 'EXTERNALLY' ELSE 'BY "'||v_default_password||'" PASSWORD EXPIRE' end||
+                  ' IDENTIFIED '||
+                  case when v_default_password is null
+                  then 'EXTERNALLY' ELSE 'BY "'||v_default_password||'" PASSWORD EXPIRE' end||
                   ' PROFILE '||v_profile||' DEFAULT TABLESPACE '||v_tbs||' TEMPORARY TABLESPACE '||v_tmp||
                   ' QUOTA '||CASE WHEN v_tbs_quota IS NULL THEN 'unlimited' ELSE v_tbs_quota||'M' END||' ON '||v_tbs;
               execsql(v_sql);
@@ -416,9 +428,11 @@ def main():
 
           PROCEDURE alter_user(p_username dba_users.username%type) IS
           BEGIN
-              execsql('ALTER USER '||p_username||' '||case when v_default_password is null then 'IDENTIFIED EXTERNALLY' end||
-                  ' PROFILE '||v_profile||' DEFAULT TABLESPACE '||v_tbs||' TEMPORARY TABLESPACE '||v_tmp||' ACCOUNT UNLOCK'||
-                  ' QUOTA '||CASE WHEN v_tbs_quota IS NULL THEN 'unlimited' ELSE v_tbs_quota||'M' END||' ON '||v_tbs);
+              execsql('ALTER USER '||p_username||' '||
+                      case when v_default_password is null then 'IDENTIFIED EXTERNALLY' end||
+                      ' PROFILE '||v_profile||' DEFAULT TABLESPACE '||v_tbs||' TEMPORARY TABLESPACE '||v_tmp
+                      ||' ACCOUNT UNLOCK'||' QUOTA '||
+                      CASE WHEN v_tbs_quota IS NULL THEN 'unlimited' ELSE v_tbs_quota||'M' END||' ON '||v_tbs);
           END;
 
           PROCEDURE process_user(p_username dba_users.username%type, p_ldap_groups varchar2) IS
@@ -450,10 +464,12 @@ def main():
               SELECT u.account_status, u.authentication_type, u.default_tablespace, u.temporary_tablespace, u.profile,
                   CASE WHEN q.max_bytes > 0 THEN q.max_bytes/1024/1024 ELSE q.max_bytes END
                   INTO v_as, v_at, v_dt, v_temp, v_p, v_qmb
-              FROM dba_users u LEFT OUTER JOIN dba_ts_quotas q ON q.username = u.username AND q.dropped = 'NO' AND q.tablespace_name = v_tbs
+              FROM dba_users u LEFT OUTER JOIN dba_ts_quotas q
+                ON q.username = u.username AND q.dropped = 'NO' AND q.tablespace_name = v_tbs
               WHERE u.username = p_username;
               -- In any change in data is detected, correct it back
-              IF v_dt != v_tbs OR v_temp != v_tmp OR v_p != v_profile OR v_as LIKE '%LOCKED%' OR (v_default_password IS NULL AND v_at = 'PASSWORD') OR
+              IF v_dt != v_tbs OR v_temp != v_tmp
+                 OR v_p != v_profile OR v_as LIKE '%LOCKED%' OR (v_default_password IS NULL AND v_at = 'PASSWORD') OR
                   (NVL(v_tbs_quota, -1) != NVL(v_qmb, -100)) THEN
                   alter_user(p_username);
               END IF;
@@ -496,7 +512,9 @@ def main():
           process_array(:var_usernames, :var_ldapgroups);
           -- Check users who are not listed
           v_processed_users:= v_processed_users||',';
-          FOR rec IN (SELECT username FROM dba_users WHERE profile = v_profile AND (account_status = 'OPEN' OR account_status NOT LIKE '%LOCKED%') ) LOOP
+          FOR rec IN (SELECT username FROM dba_users
+                       WHERE profile = v_profile
+                         AND (account_status = 'OPEN' OR account_status NOT LIKE '%LOCKED%') ) LOOP
             -- separate check in PL/SQL since v_processed_users can be over 4000 bytes long
               IF v_processed_users NOT LIKE '%,'||rec.username||',%' THEN
                 remove_user(rec.username);
@@ -521,7 +539,7 @@ def main():
     module.exit_json(msg=msg[0], changed=var_changes.getvalue() > 0)
 
 
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule, re
 
 if __name__ == '__main__':
     main()

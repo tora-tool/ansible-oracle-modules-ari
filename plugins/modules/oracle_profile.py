@@ -1,13 +1,17 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
 DOCUMENTATION = '''
 ---
 module: oracle_profile
 short_description: Manage profiles in an Oracle database
 description:
     - Manage profiles in an Oracle database
-version_added: "0.8"
+version_added: "0.8.0"
 options:
     name:
         description:
@@ -178,7 +182,7 @@ def ensure_profile_state(cursor, module, msg, name, state, attribute_name, attri
             current_attributes = get_current_attributes(cursor, module, msg, name, attribute_names_)
 
             # Convert to dict and compare current with wanted
-            if cmp(dict(current_attributes), dict(wanted_attributes)) is not 0:
+            if dict(current_attributes) != dict(wanted_attributes):
                 for i in wanted_attributes:
                     total_sql.append("alter profile %s limit %s %s " % (name, i[0], i[1]))
 
@@ -332,7 +336,7 @@ def main():
     module.exit_json(msg="Unhandled exit", changed=False)
 
 
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule, os
 
 if __name__ == '__main__':
     main()

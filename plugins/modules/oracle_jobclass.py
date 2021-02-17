@@ -1,7 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from ansible.module_utils.basic import *
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
+from ansible.module_utils.basic import AnsibleModule
 
 try:
     import cx_Oracle
@@ -17,7 +21,7 @@ short_description: Manage DBMS_SCHEDULER job classes in Oracle database
 description:
     - Manage DBMS_SCHEDULER job classes in Oracle database
     - Can be run locally on the controlmachine or on a remote host
-version_added: "0.8"
+version_added: "0.8.0"
 options:
     hostname:
         description:

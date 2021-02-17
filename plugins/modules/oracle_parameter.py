@@ -1,6 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
 DOCUMENTATION = '''
 ---
 module: oracle_parameter
@@ -8,7 +12,7 @@ short_description: Manage parameters in an Oracle database
 description:
     - Manage init parameters in an Oracle database
 
-version_added: "0.8"
+version_added: "0.8.0"
 options:
     hostname:
         description:
@@ -50,7 +54,8 @@ options:
         default: null
     state:
         description:
-            - The intended state of the parameter (present means set to value, absent/reset means the value is reset to its default value).
+            - The intended state of the parameter
+              (present means set to value, absent/reset means the value is reset to its default value).
         default: present
         choices: ['present','absent','reset']
 notes:
@@ -60,16 +65,38 @@ author: Mikael Sandström, oravirt@gmail.com, @oravirt
 '''
 
 EXAMPLES = '''
-# Set the value of db_recovery_file_dest
-oracle_parameter: hostname=remote-db-server service_name=orcl user=system password=manager name=db_recovery_file_dest value='+FRA' state=present scope=both sid='*'
+- name: Set the value of db_recovery_file_dest
+  oracle_parameter:
+    hostname: remote-db-server
+    service_name: orcl
+    user: system
+    password: manager
+    name: db_recovery_file_dest
+    value: '+FRA'
+    state: present
+    scope: both
+    sid: '*'
 
-# Set the value of db_recovery_file_dest_size
-oracle_parameter: hostname=remote-db-server service_name=orcl user=system password=manager name=db_recovery_file_dest_size value=100G state=present scope=both
+- name: Set the value of db_recovery_file_dest_size
+  oracle_parameter:
+    hostname: remote-db-server
+    service_name: orcl
+    user: system
+    password: manager
+    name: db_recovery_file_dest_size
+    value: 100G
+    state: present
+    scope: both
 
-# Reset the value of open_cursors
-oracle_parameter: hostname=remote-db-server service_name=orcl user=system password=manager name=db_recovery_file_dest_size state=reset scope=spfile
-
-
+- name: Reset the value of open_cursors
+  oracle_parameter:
+    hostname: remote-db-server
+    service_name: orcl
+    user: system
+    password: manager
+    name: db_recovery_file_dest_size
+    state: reset
+    scope: spfile
 '''
 try:
     import cx_Oracle
@@ -116,7 +143,8 @@ def modify_parameter(module, mode, msg, cursor, name, value, scope, sid):
 
     if not name or not value or name is None or value is None:
         module.fail_json(
-            msg='Error: Missing parameter name or value. (If value is supposed to be an empty string, make sure it\'s quoted)',
+            msg='Error: Missing parameter name or value.'
+                ' (If value is supposed to be an empty string, make sure it\'s quoted)',
             changed=False)
         return False
 
@@ -209,16 +237,15 @@ def get_curr_value(module, mode, msg, cursor, name, scope):
 
     if mode == 'sysdba':
         name = clean_string(name)
-        sql = 'select lower(y.ksppstdvl) from sys.x$ksppi x, sys.x$ksppcv y where x.indx = y.indx and x.ksppinm = lower(\'%s\')' % (
-            name)
+        sql = 'select lower(y.ksppstdvl)' \
+              '  from sys.x$ksppi x, sys.x$ksppcv y' \
+              ' where x.indx = y.indx and x.ksppinm = lower(\'%s\')' % (name)
     else:
         sql = 'select lower(display_value) from %s where name = lower(\'%s\')' % (parameter_source, name)
 
     try:
         cursor.execute(sql)
         result = (cursor.fetchall()[0][0])
-
-
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
         msg[0] = 'Blergh, something went wrong while getting current value - %s sql: %s' % (error.message, sql)
@@ -261,12 +288,12 @@ def main():
 
     if not cx_oracle_exists:
         module.fail_json(
-            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick.")
 
     wallet_connect = '/@%s' % service_name
     try:
-        if (
-                not user and not password):  # If neither user or password is supplied, the use of an oracle wallet is assumed
+        # If neither user or password is supplied, the use of an oracle wallet is assumed
+        if not user and not password:
             if mode == 'sysdba':
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
@@ -315,7 +342,7 @@ def main():
     module.exit_json(msg=msg[0], changed=False)
 
 
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule, re
 
 if __name__ == '__main__':
     main()

@@ -1,7 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from ansible.module_utils.basic import *
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
+from ansible.module_utils.basic import AnsibleModule, os
 
 try:
     import cx_Oracle
@@ -16,7 +20,7 @@ module: oracle_asmdg
 short_description: Manage diskgroups in an Oracle database
 description:
   - Manage diskgroups in an Oracle database
-version_added: "0.8"
+version_added: "0.8.0"
 options:
   name:
     description:
@@ -95,8 +99,8 @@ author: Mikael Sandström, oravirt@gmail.com, @oravirt
 '''
 
 EXAMPLES = '''
-# Create a diskgroup
-oracle_asmdg:
+- name: Create a diskgroup
+  oracle_asmdg:
     name: MYDG1
     disks:
        - ORCL:MYDG1
@@ -111,7 +115,8 @@ oracle_asmdg:
     host: localhost
     oh: /u01/app/oracle/12.1.2.0/grid
 
-oracle_asmdg:
+- name: Create another diskgroup
+  oracle_asmdg:
     name: DATA
     disks:
        - /dev/oracle/data1
@@ -126,7 +131,6 @@ oracle_asmdg:
     sn: '+ASM'
     host: localhost
     oh: /u01/app/oracle/12.2.0.1/grid
-
 '''
 
 global rac
@@ -242,7 +246,7 @@ def ensure_diskgroup_state(cursor, module, msg, name, state, disks, attribute_na
         if len(attribute_names_) != 0:
             current_properties = get_current_properties(cursor, module, msg, name, attribute_names_)
             # Convert to dict and compare current with wanted
-            if cmp(dict(current_properties), dict(wanted_attributes)) is not 0:
+            if dict(current_properties) != dict(wanted_attributes):
                 change_attr = True
                 for i in wanted_attributes:
                     total_sql.append("alter diskgroup %s set attribute '%s'='%s'" % (name, i[0], i[1]))

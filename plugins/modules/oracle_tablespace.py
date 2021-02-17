@@ -5,11 +5,9 @@
 # Copyright: (c) 2020, Ari Stark <ari.stark@netcourrier.com>
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-import re
+from __future__ import absolute_import, division, print_function
 
-import cx_Oracle
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import os
+__metaclass__ = type
 
 DOCUMENTATION = '''
 module: oracle_tablespace
@@ -20,7 +18,7 @@ description:
     - It supports permanent, undo and temporary tablespaces.
     - It supports online/offline state and read only/read write state.
     - It doesn't support defining default tablespace and other more specific actions.
-version_added: "0.8"
+version_added: "0.8.0"
 author:
     - Mikael Sandström (@oravirt)
     - Ari Stark (@ari-stark)
@@ -134,6 +132,9 @@ options:
             - The name of the tablespace to manage.
         type: str
         required: True
+        aliases:
+            - ts
+            - name
     username:
         description:
             - Set the login to use to connect the database server.
@@ -219,10 +220,15 @@ ddls:
     elements: str
 '''
 
-global module
-global cursor
-global diff
-global ddls
+import re
+
+from ansible.module_utils.basic import AnsibleModule, os
+
+try:
+    HAS_CX_ORACLE = True
+    import cx_Oracle
+except ImportError:
+    HAS_CX_ORACLE = False
 
 
 class Size:
@@ -335,10 +341,9 @@ class Datafile:
 
     def needs_change_autoextend(self, prev):
         """Autoextend change when switching from off to on, and conversely, or when it's on and sizes change"""
-        return (self.autoextend != prev.autoextend or
-                self.autoextend and (
-                        self.maxsize is not None and not self.maxsize.__eq__(prev.maxsize) or
-                        self.nextsize is not None and not self.nextsize.__eq__(prev.nextsize)))
+        has_maxsize_changed = self.autoextend and self.maxsize is not None and not self.maxsize.__eq__(prev.maxsize)
+        has_nextsize_changed = self.autoextend and self.nextsize is not None and not self.nextsize.__eq__(prev.nextsize)
+        return self.autoextend != prev.autoextend or has_maxsize_changed or has_nextsize_changed
 
 
 class FileType:
@@ -600,7 +605,7 @@ def main():
             autoextend=dict(type='bool', default=False),
             bigfile=dict(type='bool', default=False),
             content=dict(type='str', default='permanent', choices=['permanent', 'temp', 'undo']),
-            datafiles=dict(type='list', default=[], aliases=['datafile', 'df']),
+            datafiles=dict(type='list', elements='str', default=[], aliases=['datafile', 'df']),
             default=dict(type='bool', default=False),
             hostname=dict(type='str', default='localhost'),
             maxsize=dict(type='str', required=False, aliases=['max']),
@@ -623,6 +628,9 @@ def main():
                      ['state', 'offline', ['size']]],
         supports_check_mode=True,
     )
+
+    if not HAS_CX_ORACLE:
+        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
 
     autoextend = module.params['autoextend']
     bigfile = module.params['bigfile']

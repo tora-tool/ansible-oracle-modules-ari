@@ -5,10 +5,9 @@
 # Copyright: (c) 2020, Ari Stark <ari.stark@netcourrier.com>
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
+from __future__ import absolute_import, division, print_function
 
-import cx_Oracle
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import os
+__metaclass__ = type
 
 DOCUMENTATION = '''
 ---
@@ -17,7 +16,7 @@ short_description: Returns some facts about Oracle DB
 description:
     - This module returns some facts about Oracle database.
     - It has several subsets and will gather all subsets by default.
-version_added: "0.8"
+version_added: "0.8.0"
 author:
     - Ilmar Kerm (@ilmarkerm)
     - Ari Stark (@ari-stark)
@@ -30,6 +29,7 @@ options:
             - Every other choice will lead to get I(min) facts and others asked for.
         default: all
         type: list
+        elements: str
         choices: ['all', 'database', 'instance', 'min', 'option', 'parameter', 'pdb', 'rac', 'redolog', 'tablespace',
                   'userenv', 'user']
     hostname:
@@ -114,9 +114,11 @@ EXAMPLES = '''
 RETURN = '''
 version:
     description: Contains the database version
+    returned: always
     type: str
 database:
     description: Contains content of v$database.
+    returned: always
     type: dict
     elements: str
 instance:
@@ -171,8 +173,14 @@ users:
     elements: dict
 '''
 
-global module
-global cursor
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.basic import os
+
+try:
+    HAS_CX_ORACLE = True
+    import cx_Oracle
+except ImportError:
+    HAS_CX_ORACLE = False
 
 
 def execute_select(sql):
@@ -283,6 +291,7 @@ def main():
     module = AnsibleModule(
         argument_spec=dict(
             gather_subset=dict(type='list',
+                               elements='str',
                                default=['all'],
                                choices=['all', 'database', 'instance', 'min', 'option', 'parameter', 'pdb', 'rac',
                                         'redolog', 'tablespace', 'userenv', 'user']),
@@ -297,6 +306,9 @@ def main():
         required_together=[['username', 'password']],
         supports_check_mode=True,
     )
+
+    if not HAS_CX_ORACLE:
+        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
 
     # Connect to database
     gather_subset = set(module.params['gather_subset'])

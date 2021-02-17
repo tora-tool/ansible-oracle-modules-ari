@@ -4,9 +4,9 @@
 # Copyright: (c) 2020, Ari Stark <ari.stark@netcourrier.com>
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-import cx_Oracle
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import os
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
 
 DOCUMENTATION = '''
 module: oracle_directory
@@ -14,7 +14,7 @@ short_description: Manage Oracle directory objects
 description:
     - This module manage Oracle directory objects.
     - It can create, replace or drop directories.
-version_added: "0.9"
+version_added: "0.9.0"
 author: Ari Stark (@ari-stark)
 options:
     directory_name:
@@ -114,10 +114,14 @@ ddls:
     elements: str
 '''
 
-global module
-global cursor
-global diff
-global ddls
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.basic import os
+
+try:
+    HAS_CX_ORACLE = True
+    import cx_Oracle
+except ImportError:
+    HAS_CX_ORACLE = False
 
 
 def get_existing_directory(directory_name):
@@ -201,6 +205,9 @@ def main():
         required_if=[['state', 'present', ['directory_path']]],
         supports_check_mode=True,
     )
+
+    if not HAS_CX_ORACLE:
+        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
 
     directory_name = module.params['directory_name']
     directory_path = module.params['directory_path']

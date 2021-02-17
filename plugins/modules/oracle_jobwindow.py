@@ -1,6 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
 DOCUMENTATION = '''
 ---
 module: oracle_jobwindow
@@ -8,7 +12,7 @@ short_description: Manage DBMS_SCHEDULER job windows in Oracle database
 description:
     - Manage DBMS_SCHEDULER job windows in Oracle database
     - Can be run locally on the controlmachine or on a remote host
-version_added: "0.8"
+version_added: "0.8.0"
 options:
     hostname:
         description:
@@ -128,9 +132,9 @@ else:
 
 def query_existing(name):
     c = conn.cursor()
-    c.execute(
-        "SELECT resource_plan, duration, window_priority, enabled, repeat_interval, comments FROM all_scheduler_windows WHERE owner = 'SYS' AND window_name = :name",
-        {"name": name})
+    c.execute("SELECT resource_plan, duration, window_priority, enabled, repeat_interval, comments"
+              "  FROM all_scheduler_windows WHERE owner = 'SYS' AND window_name = :name",
+              {"name": name})
     result = c.fetchone()
     if c.rowcount > 0:
         return {"exists": True, "resource_plan": result[0], "duration": result[1], "window_priority": result[2],
@@ -166,14 +170,13 @@ def main():
     )
     # Check for required modules
     if not cx_oracle_exists:
-        module.fail_json(
-            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
+        module.fail_json(msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick.")
     # Check input parameters
     job_fullname = module.params['name'].upper()
     if module.params['duration_min'] is None and module.params['duration_hour'] is None:
         module.fail_json(msg='Either duration_min or duration_hour must be specified', changed=False)
-    new_duration_min = module.params['duration_min'] if module.params['duration_min'] else (
-            module.params['duration_hour'] * 60)
+    new_duration_min = module.params['duration_min'] if module.params['duration_min'] \
+        else (module.params['duration_hour'] * 60)
     new_duration = timedelta(minutes=new_duration_min)
     if new_duration_min < 1:
         module.fail_json(msg='Invalid window duration', changed=False)
@@ -186,8 +189,8 @@ def main():
     mode = module.params["mode"]
     wallet_connect = '/@%s' % service_name
     try:
-        if (
-                not user and not password):  # If neither user or password is supplied, the use of an oracle wallet is assumed
+        # If neither user or password is supplied, the use of an oracle wallet is assumed
+        if not user and not password:
             if mode == 'sysdba':
                 connect = wallet_connect
                 conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
@@ -296,8 +299,9 @@ def main():
             v_name all_scheduler_windows.window_name%type;
         BEGIN
             v_name:= :name;
-            DBMS_SCHEDULER.CREATE_WINDOW(window_name=>v_name, repeat_interval=>:interval, comments=>:comments, resource_plan=>:plan,
-                duration=>numtodsinterval(:duration, 'MINUTE'), window_priority=>:priority);
+            DBMS_SCHEDULER.CREATE_WINDOW(window_name=>v_name, repeat_interval=>:interval,
+                                         comments=>:comments, resource_plan=>:plan,
+                                         duration=>numtodsinterval(:duration, 'MINUTE'), window_priority=>:priority);
             IF :state = 'enabled' THEN
                 DBMS_SCHEDULER.ENABLE('SYS.'||v_name);
             ELSE
@@ -318,7 +322,7 @@ def main():
     module.exit_json(msg=", ".join(msg), changed=result_changed)
 
 
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule
 
 if __name__ == '__main__':
     main()

@@ -1,9 +1,13 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import cx_Oracle
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import os
+# Copyright: (c) 2014 Mikael Sandström <oravirt@gmail.com>
+# Copyright: (c) 2021, Ari Stark <ari.stark@netcourrier.com>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
 
 DOCUMENTATION = '''
 module: oracle_user
@@ -14,7 +18,7 @@ description:
     - It can empty schemas (droping all its content).
     - It can change password of users ; lock/unlock and expire/unexpire accounts.
     - It can't be used to give privileges (refer to oracle_grant).
-version_added: "0.8"
+version_added: "0.8.0"
 author:
     - Mikael Sandström (@oravirt)
     - Ari Stark (@ari-stark)
@@ -25,9 +29,8 @@ options:
             - If not specified for a new user and no I(schema_password) is specified, there won't be authentication.
             - If not specified and I(schema_password) is specified, value will be forced to I(password).
         required: false
-        default: None
         type: str
-        choices: ['external', 'global', 'no_authentification', 'password']
+        choices: ['external', 'global', 'no_authentication', 'password']
     default_tablespace:
         description:
             - Default tablespace for the user.
@@ -90,7 +93,8 @@ options:
     schema_password:
         description:
             - Password of the user account.
-        required: true if I(authentication_type) is I(password).
+            - Required if I(authentication_type) is I(password).
+        required: false
         type: str
     service_name:
         description:
@@ -128,8 +132,8 @@ notes:
 '''
 
 EXAMPLES = '''
-# Create a new schema on a remote db by running the module on the controlmachine
-oracle_user:
+- name: Create a new schema on a remote db by running the module on the controlmachine
+  oracle_user:
     hostname: "remote-db-server"
     service_name: "orcl"
     username: "system"
@@ -139,8 +143,8 @@ oracle_user:
     default_tablespace: "test"
     state: "present"
 
-# Drop a user on a remote db
-oracle_user:
+- name: Drop a user on a remote db
+  oracle_user:
     hostname: "remote-db-server"
     service_name: "orcl"
     username: "system"
@@ -148,8 +152,8 @@ oracle_user:
     schema_name: "myschema"
     state: "absent"
 
-# Empty a schema on a remote db
-oracle_user:
+- name: Empty a schema on a remote db
+  oracle_user:
     hostname: "remote-db-server"
     service_name: "orcl"
     username: "system"
@@ -166,11 +170,13 @@ ddls:
     elements: str
 '''
 
-global module
-global cursor
-global ddls
-global diff
-global dsn
+from ansible.module_utils.basic import AnsibleModule, os
+
+try:
+    HAS_CX_ORACLE = True
+    import cx_Oracle
+except ImportError:
+    HAS_CX_ORACLE = False
 
 
 def execute_select(sql, params=None):
@@ -407,13 +413,16 @@ def main():
             profile=dict(type='str', default=None),
             schema_name=dict(type='str', required=True, aliases=['name']),
             schema_password=dict(type='str', default=None, no_log=True),
-            service_name=dict(type='str', required=True, aliases=['tns']),
+            service_name=dict(type='str', required=True),
             state=dict(type='str', default='present', choices=['absent', 'empty', 'present']),
             temporary_tablespace=dict(type='str', default=None),
             username=dict(type='str', required=False, aliases=['user']),
         ),
         supports_check_mode=True,
     )
+
+    if not HAS_CX_ORACLE:
+        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
 
     authentication_type = module.params['authentication_type']
     default_tablespace = module.params['default_tablespace']
