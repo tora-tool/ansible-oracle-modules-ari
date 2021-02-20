@@ -1,5 +1,10 @@
 # Changelog #
 
+## 1.0.1 ##
+
+* Updated the readme.
+* Fixed some issues raised by sanity tests.
+
 ## 1.0.0 ##
 
 * Standardize module versions.

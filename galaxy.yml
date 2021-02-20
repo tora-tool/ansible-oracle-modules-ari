@@ -1,6 +1,6 @@
 namespace: "ari_stark"
 name: "ansible_oracle_modules"
-version: "1.0.0"
+version: "1.0.1"
 readme: "README.md"
 authors:
   - "Ari Stark"
@@ -16,5 +16,6 @@ issues: "https://github.com/ari-stark/ansible-oracle-modules/issues"
 build_ignore:
   - "/venv"
   - "/.idea"
+  - "/tests"
   - "/requirements.txt"
   - "/*.tar.gz"
