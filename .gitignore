@@ -3,3 +3,4 @@
 /tests/.coverage
 /**/__pycache__
 /*.tar.gz
+/ansible_collections/

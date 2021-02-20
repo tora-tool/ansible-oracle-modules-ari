@@ -170,51 +170,21 @@ ddls:
     elements: str
 '''
 
-from ansible.module_utils.basic import AnsibleModule, os
-
-try:
-    HAS_CX_ORACLE = True
-    import cx_Oracle
-except ImportError:
-    HAS_CX_ORACLE = False
-
-
-def execute_select(sql, params=None):
-    """Executes a select query and return fetched data"""
-    try:
-        if params:
-            return cursor.execute(sql, params).fetchall()
-        else:
-            return cursor.execute(sql).fetchall()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=sql)
-
-
-def execute_ddl(request):
-    """Execute a DDL request if not in check_mode"""
-    try:
-        if not module.check_mode:
-            cursor.execute(request)
-            ddls.append(request)
-        else:
-            ddls.append('--' + request)
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=request, ddls=ddls)
+from ansible.module_utils.basic import AnsibleModule
+from ansible_collections.ari_stark.ansible_oracle_modules.plugins.module_utils.ora_db import OraDB
 
 
 def get_existing_user(schema_name):
     """Check if the user/schema exists"""
-    data = execute_select('select username,'
-                          '       account_status,'
-                          '       default_tablespace,'
-                          '       temporary_tablespace,'
-                          '       profile,'
-                          '       authentication_type,'
-                          '       oracle_maintained'
-                          '  from dba_users'
-                          ' where username = upper(:schema_name)', {'schema_name': schema_name})
+    data = ora_db.execute_select('select username,'
+                                 '       account_status,'
+                                 '       default_tablespace,'
+                                 '       temporary_tablespace,'
+                                 '       profile,'
+                                 '       authentication_type,'
+                                 '       oracle_maintained'
+                                 '  from dba_users'
+                                 ' where username = upper(:schema_name)', {'schema_name': schema_name})
     if data:
         row = data[0]
         state = 'present'
@@ -245,16 +215,10 @@ def get_existing_user(schema_name):
         return None
 
 
-# Check if password has changed
 def has_password_changed(schema_name, schema_password):
-    connection_parameters = {'user': schema_name, 'password': schema_password, 'dsn': dsn}
-    # Connecting
-    try:
-        cx_Oracle.connect(**connection_parameters)
-        return False
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        return error.code == 1017  # invalid username/password; logon denied
+    """Check if password has changed."""
+    expected_error = 1017  # invalid username/password; logon denied
+    return ora_db.try_connect(schema_name, schema_password) == expected_error
 
 
 def ensure_present(schema_name, authentication_type, schema_password, default_tablespace, temporary_tablespace,
@@ -329,7 +293,7 @@ def ensure_present(schema_name, authentication_type, schema_password, default_ta
                 changed = True
 
         if empty:
-            rows = execute_select(
+            rows = ora_db.execute_select(
                 "select object_name, object_type"
                 "  from all_objects"
                 " where object_type in('TABLE', 'VIEW', 'PACKAGE', 'PROCEDURE', 'FUNCTION', 'SEQUENCE',"
@@ -339,7 +303,7 @@ def ensure_present(schema_name, authentication_type, schema_password, default_ta
             for row in rows:
                 object_name = row[0]
                 object_type = row[1]
-                execute_ddl('drop %s %s."%s" %s' % (
+                ora_db.execute_ddl('drop %s %s."%s" %s' % (
                     object_type, schema_name, object_name, 'cascade constraints' if object_type == 'TABLE' else ''))
 
             if len(rows) != 0:
@@ -347,11 +311,11 @@ def ensure_present(schema_name, authentication_type, schema_password, default_ta
 
         if changed or emptied:
             if changed:
-                execute_ddl(sql)
+                ora_db.execute_ddl(sql)
             module.exit_json(msg='User %s changed and/or schema emptied.' % schema_name, changed=True, diff=diff,
-                             ddls=ddls)
+                             ddls=ora_db.ddls)
         else:
-            module.exit_json(msg='User %s already exists.' % schema_name, changed=False, diff=diff, ddls=ddls)
+            module.exit_json(msg='User %s already exists.' % schema_name, changed=False, diff=diff, ddls=ora_db.ddls)
     else:
         sql = 'create user %s ' % schema_name
         if authentication_type == 'external':
@@ -373,9 +337,9 @@ def ensure_present(schema_name, authentication_type, schema_password, default_ta
         if expired:
             sql += 'password expire '
 
-        execute_ddl(sql)
+        ora_db.execute_ddl(sql)
 
-        module.exit_json(msg='User %s has been created.' % schema_name, changed=True, diff=diff, ddls=ddls)
+        module.exit_json(msg='User %s has been created.' % schema_name, changed=True, diff=diff, ddls=ora_db.ddls)
 
 
 def ensure_absent(schema_name):
@@ -385,18 +349,16 @@ def ensure_absent(schema_name):
     if prev_user and prev_user['oracle_maintained']:
         module.fail_json(msg='Cannot drop a system user.', changed=False)
     elif prev_user:
-        execute_ddl('drop user %s cascade' % schema_name)
-        module.exit_json(msg='User %s dropped.' % schema_name, changed=True, diff=diff, ddls=ddls)
+        ora_db.execute_ddl('drop user %s cascade' % schema_name)
+        module.exit_json(msg='User %s dropped.' % schema_name, changed=True, diff=diff, ddls=ora_db.ddls)
     else:
-        module.exit_json(msg="User %s doesn't exist." % schema_name, changed=False, diff=diff, ddls=ddls)
+        module.exit_json(msg="User %s doesn't exist." % schema_name, changed=False, diff=diff, ddls=ora_db.ddls)
 
 
 def main():
     global module
-    global cursor
+    global ora_db
     global diff
-    global ddls
-    global dsn
 
     module = AnsibleModule(
         argument_spec=dict(
@@ -421,60 +383,24 @@ def main():
         supports_check_mode=True,
     )
 
-    if not HAS_CX_ORACLE:
-        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
-
     authentication_type = module.params['authentication_type']
     default_tablespace = module.params['default_tablespace']
     expired = module.params['expired']
-    hostname = module.params['hostname']
     locked = module.params['locked']
-    mode = module.params['mode']
-    oracle_home = module.params['oracle_home']
-    password = module.params['password']
-    port = module.params['port']
     profile = module.params['profile']
     schema_name = module.params['schema_name']
     schema_password = module.params['schema_password']
-    service_name = module.params['service_name']
     state = module.params['state']
     temporary_tablespace = module.params['temporary_tablespace']
-    username = module.params['username']
 
     # Transforming parameters
     if schema_password:
         authentication_type = 'password'
 
-    if oracle_home:
-        os.environ['ORACLE_HOME'] = oracle_home
-
-    # Setting connection
-    connection_parameters = {}
-    if username and password:
-        connection_parameters['user'] = username
-        connection_parameters['password'] = password
-        connection_parameters['dsn'] = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-    else:  # Using Oracle wallet
-        connection_parameters['dsn'] = service_name
-
-    if mode == 'sysdba':
-        connection_parameters['mode'] = cx_Oracle.SYSDBA
-
-    # Connecting
-    try:
-        connection = cx_Oracle.connect(**connection_parameters)
-        cursor = connection.cursor()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code)
-
-    dsn = connection_parameters['dsn']
-
+    ora_db = OraDB(module)
     diff = {'before': {'schema_name': schema_name},
             'after': {'state': state,
                       'schema_name': schema_name, }}
-
-    ddls = []
 
     if state in ['empty', 'present']:
         ensure_present(schema_name, authentication_type, schema_password, default_tablespace, temporary_tablespace,

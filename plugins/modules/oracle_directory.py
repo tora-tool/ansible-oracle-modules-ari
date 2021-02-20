@@ -115,78 +115,55 @@ ddls:
 '''
 
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import os
-
-try:
-    HAS_CX_ORACLE = True
-    import cx_Oracle
-except ImportError:
-    HAS_CX_ORACLE = False
+from ansible_collections.ari_stark.ansible_oracle_modules.plugins.module_utils.ora_db import OraDB
 
 
 def get_existing_directory(directory_name):
-    """Search for an existing directory in database"""
-    request = 'select directory_name, directory_path from all_directories where directory_name = :dn'
-    params = {'dn': directory_name}
-    try:
-        row = cursor.execute(request, **params).fetchone()
+    """Search for an existing directory in database."""
+    row = ora_db.execute_select('select directory_name, directory_path from all_directories where directory_name = :dn',
+                                {'dn': directory_name}, fetchone=True)
 
-        if row:
-            diff['before']['state'] = 'present'
-            diff['before']['path'] = row[1]
-            return {'directory_name': row[0], 'directory_path': row[1]}
-        else:
-            diff['before']['state'] = 'absent'
-            return None
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=request, parameters=params, ddls=ddls)
-
-
-def execute_ddl(request):
-    """Execute a DDL request if not in check_mode"""
-    try:
-        if not module.check_mode:
-            cursor.execute(request)
-            ddls.append(request)
-        else:
-            ddls.append('--' + request)
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=request, ddls=ddls)
+    if row:
+        diff['before']['state'] = 'present'
+        diff['before']['path'] = row[1]
+        return {'directory_name': row[0], 'directory_path': row[1]}
+    else:
+        diff['before']['state'] = 'absent'
+        return None
 
 
 def ensure_present(directory_name, directory_path):
-    """Create or replace directory if needed"""
+    """Create or replace directory if needed."""
     prev_directory = get_existing_directory(directory_name)
     diff['after']['path'] = directory_path
 
     if prev_directory is None:
-        execute_ddl("create directory %s as '%s'" % (directory_name, directory_path))
-        module.exit_json(changed=True, message='Directory %s created' % directory_name, diff=diff, ddls=ddls)
+        ora_db.execute_ddl("create directory %s as '%s'" % (directory_name, directory_path))
+        module.exit_json(changed=True, message='Directory %s created' % directory_name, diff=diff, ddls=ora_db.ddls)
     elif prev_directory['directory_path'] != directory_path:
-        execute_ddl("create or replace directory %s as '%s'" % (directory_name, directory_path))
-        module.exit_json(changed=True, message='Directory %s replaced' % directory_name, diff=diff, ddls=ddls)
+        ora_db.execute_ddl("create or replace directory %s as '%s'" % (directory_name, directory_path))
+        module.exit_json(changed=True, message='Directory %s replaced' % directory_name, diff=diff, ddls=ora_db.ddls)
     else:
-        module.exit_json(changed=False, message='Directory %s already exists' % directory_name, diff=diff, ddls=ddls)
+        module.exit_json(changed=False, message='Directory %s already exists' % directory_name, diff=diff,
+                         ddls=ora_db.ddls)
 
 
 def ensure_absent(directory_name):
-    """Drop directory if needed"""
+    """Drop directory if needed."""
     prev_directory = get_existing_directory(directory_name)
 
     if prev_directory is None:
-        module.exit_json(changed=False, message="Directory %s doesn't exist" % directory_name, diff=diff, ddls=ddls)
+        module.exit_json(changed=False, message="Directory %s doesn't exist" % directory_name, diff=diff,
+                         ddls=ora_db.ddls)
     else:
-        execute_ddl("drop directory %s" % directory_name)
-        module.exit_json(changed=True, message='Directory %s dropped.' % directory_name, diff=diff, ddls=ddls)
+        ora_db.execute_ddl("drop directory %s" % directory_name)
+        module.exit_json(changed=True, message='Directory %s dropped.' % directory_name, diff=diff, ddls=ora_db.ddls)
 
 
 def main():
     global module
-    global cursor
+    global ora_db
     global diff
-    global ddls
 
     module = AnsibleModule(
         argument_spec=dict(
@@ -206,48 +183,14 @@ def main():
         supports_check_mode=True,
     )
 
-    if not HAS_CX_ORACLE:
-        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
-
     directory_name = module.params['directory_name']
     directory_path = module.params['directory_path']
-    hostname = module.params['hostname']
-    password = module.params['password']
-    port = module.params['port']
-    mode = module.params['mode']
-    oracle_home = module.params['oracle_home']
-    service_name = module.params['service_name']
     state = module.params['state']
-    username = module.params['username']
 
-    if oracle_home:
-        os.environ['ORACLE_HOME'] = oracle_home
-
-    # Setting connection
-    connection_parameters = {}
-    if username and password:
-        connection_parameters['user'] = username
-        connection_parameters['password'] = password
-        connection_parameters['dsn'] = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-    else:  # Using Oracle wallet
-        connection_parameters['dsn'] = service_name
-
-    if mode == 'sysdba':
-        connection_parameters['mode'] = cx_Oracle.SYSDBA
-
-    # Connecting
-    try:
-        connection = cx_Oracle.connect(**connection_parameters)
-        cursor = connection.cursor()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code)
-
+    ora_db = OraDB(module)
     # Initialize diff
     diff = {'before': {'name': directory_name},
             'after': {'name': directory_name, 'state': state}}
-
-    ddls = []
 
     # Doing action
     if state == 'present':

@@ -155,73 +155,44 @@ ddls:
 '''
 
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import os
-
-try:
-    HAS_CX_ORACLE = True
-    import cx_Oracle
-except ImportError:
-    HAS_CX_ORACLE = False
+from ansible_collections.ari_stark.ansible_oracle_modules.plugins.module_utils.ora_db import OraDB
 
 _PRIVILEGE_SEPARATOR = '::'
 
 
-def execute_select(sql, params=None):
-    """Executes a select query and return fetched data"""
-    if params is None:
-        params = {}
-    try:
-        return cursor.execute(sql, params).fetchall()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=sql, params=params)
-
-
-def execute_ddl(request):
-    """Execute a DDL request if not in check_mode"""
-    try:
-        if not module.check_mode:
-            cursor.execute(request)
-            ddls.append(request)
-        else:
-            ddls.append('--' + request)
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=request, ddls=ddls)
-
-
 def get_existing_system_privileges(grantee):
-    """Get the current system privileges of grantee"""
-    rows = execute_select('select privilege from dba_sys_privs where grantee = :grantee', {'grantee': grantee})
+    """Get the current system privileges of grantee."""
+    rows = ora_db.execute_select('select privilege from dba_sys_privs where grantee = :grantee', {'grantee': grantee})
     return [item[0] for item in rows]
 
 
 def get_existing_role_privileges(grantee):
-    """Get the current role privileges of grantee"""
-    rows = execute_select('select granted_role from dba_role_privs where grantee = :grantee', {'grantee': grantee})
+    """Get the current role privileges of grantee."""
+    rows = ora_db.execute_select('select granted_role from dba_role_privs where grantee = :grantee',
+                                 {'grantee': grantee})
     return [item[0] for item in rows]
 
 
 def get_existing_object_privileges(grantee):
-    """Get the current object privileges of grantee"""
-    rows = execute_select("select p.owner || '.' || p.table_name || :sep || p.privilege"
-                          "  from dba_tab_privs p"
-                          " where p.grantee = :grantee", {'grantee': grantee, 'sep': _PRIVILEGE_SEPARATOR})
+    """Get the current object privileges of grantee."""
+    rows = ora_db.execute_select("select p.owner || '.' || p.table_name || :sep || p.privilege"
+                                 "  from dba_tab_privs p"
+                                 " where p.grantee = :grantee", {'grantee': grantee, 'sep': _PRIVILEGE_SEPARATOR})
     return [item[0] for item in rows]
 
 
 def is_directory(name):
-    """Return True if name is a directory"""
-    rows = execute_select("select 1"
-                          "  from all_objects"
-                          " where owner = :owner and object_name = :name and object_type = 'DIRECTORY'",
-                          {'owner': name.split('.')[0], 'name': name.split('.')[1]})
+    """Return True if name is a directory."""
+    rows = ora_db.execute_select("select 1"
+                                 "  from all_objects"
+                                 " where owner = :owner and object_name = :name and object_type = 'DIRECTORY'",
+                                 {'owner': name.split('.')[0], 'name': name.split('.')[1]})
     return len(rows) != 0
 
 
 def execute_grant(grantee, privileges):
     if privileges:
-        execute_ddl('grant %s to %s' % (','.join(privileges), grantee))
+        ora_db.execute_ddl('grant %s to %s' % (','.join(privileges), grantee))
         return True
     return False
 
@@ -229,7 +200,7 @@ def execute_grant(grantee, privileges):
 def execute_object_grant(grantee, o_privileges):
     changed = False
     for (name, privileges) in _list_to_dict(o_privileges).items():
-        execute_ddl('grant %s on %s %s to %s' % (
+        ora_db.execute_ddl('grant %s on %s %s to %s' % (
             ','.join(privileges), 'directory' if is_directory(name) else '', name, grantee))
         changed = True
     return changed
@@ -237,7 +208,7 @@ def execute_object_grant(grantee, o_privileges):
 
 def execute_revoke(grantee, privileges):
     if privileges:
-        execute_ddl('revoke %s from %s' % (','.join(privileges), grantee))
+        ora_db.execute_ddl('revoke %s from %s' % (','.join(privileges), grantee))
         return True
     return False
 
@@ -245,14 +216,14 @@ def execute_revoke(grantee, privileges):
 def execute_object_revoke(grantee, o_privileges):
     changed = False
     for (name, privileges) in _list_to_dict(o_privileges).items():
-        execute_ddl('revoke %s on %s %s from %s' % (
+        ora_db.execute_ddl('revoke %s on %s %s from %s' % (
             ','.join(privileges), 'directory' if is_directory(name) else '', name, grantee))
         changed = True
     return changed
 
 
 def _list_to_dict(o_p_list):
-    """Transform a list of objects privileges to a dict of objects privileges"""
+    """Transform a list of objects privileges to a dict of objects privileges."""
     object_privileges = {}
     for item in o_p_list:
         (name, privilege) = item.split(_PRIVILEGE_SEPARATOR)
@@ -264,7 +235,7 @@ def _list_to_dict(o_p_list):
 
 
 def ensure_privileges(grantee, privileges, o_privileges_list):
-    """Set privileges to the grantee"""
+    """Set privileges to the grantee."""
     prev_privileges = get_existing_system_privileges(grantee) + get_existing_role_privileges(grantee)
     prev_privileges.sort()
     diff['before']['privileges'] = prev_privileges
@@ -292,13 +263,14 @@ def ensure_privileges(grantee, privileges, o_privileges_list):
     changed = execute_object_revoke(grantee, o_privileges_to_remove) or changed
 
     if changed:
-        module.exit_json(msg="Grants of grantee '%s' were changed." % grantee, diff=diff, ddls=ddls, changed=True)
+        module.exit_json(msg="Grants of grantee '%s' were changed." % grantee, diff=diff, ddls=ora_db.ddls,
+                         changed=True)
     else:
-        module.exit_json(msg="The grantee's privileges haven't changed.", diff=diff, ddls=ddls, changed=False)
+        module.exit_json(msg="The grantee's privileges haven't changed.", diff=diff, ddls=ora_db.ddls, changed=False)
 
 
 def append_privileges(grantee, privileges, o_privileges_list):
-    """Append privileges to the grantee"""
+    """Append privileges to the grantee."""
     prev_privileges = get_existing_system_privileges(grantee) + get_existing_role_privileges(grantee)
     prev_privileges.sort()
     diff['before']['privileges'] = prev_privileges
@@ -318,13 +290,13 @@ def append_privileges(grantee, privileges, o_privileges_list):
     changed = execute_object_grant(grantee, o_privileges_list) or changed
 
     if changed:
-        module.exit_json(msg="The grantee's privileges were changed.", diff=diff, ddls=ddls, changed=True)
+        module.exit_json(msg="The grantee's privileges were changed.", diff=diff, ddls=ora_db.ddls, changed=True)
     else:
-        module.exit_json(msg="The grantee's privileges haven't changed.", diff=diff, ddls=ddls, changed=False)
+        module.exit_json(msg="The grantee's privileges haven't changed.", diff=diff, ddls=ora_db.ddls, changed=False)
 
 
 def remove_privileges(grantee, privileges, o_privileges_list):
-    """Remove privileges to the grantee"""
+    """Remove privileges to the grantee."""
     prev_privileges = get_existing_system_privileges(grantee) + get_existing_role_privileges(grantee)
     prev_privileges.sort()
     diff['before']['privileges'] = prev_privileges
@@ -343,16 +315,15 @@ def remove_privileges(grantee, privileges, o_privileges_list):
     changed = execute_object_revoke(grantee, o_privileges_list) or changed
 
     if changed:
-        module.exit_json(msg="The grantee's privileges were changed.", diff=diff, ddls=ddls, changed=True)
+        module.exit_json(msg="The grantee's privileges were changed.", diff=diff, ddls=ora_db.ddls, changed=True)
     else:
-        module.exit_json(msg="The grantee's privileges haven't changed.", diff=diff, ddls=ddls, changed=False)
+        module.exit_json(msg="The grantee's privileges haven't changed.", diff=diff, ddls=ora_db.ddls, changed=False)
 
 
 def main():
     global module
-    global cursor
+    global ora_db
     global diff
-    global ddls
 
     module = AnsibleModule(
         argument_spec=dict(
@@ -372,18 +343,9 @@ def main():
         supports_check_mode=True,
     )
 
-    if not HAS_CX_ORACLE:
-        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
-
     grantee = module.params['grantee']
-    hostname = module.params['hostname']
-    mode = module.params['mode']
     objects_privileges = module.params['objects_privileges']
-    oracle_home = module.params['oracle_home']
-    password = module.params['password']
-    port = module.params['port']
     privileges = module.params['privileges']
-    service_name = module.params['service_name']
     state = module.params['state']
     username = module.params['username']
 
@@ -400,30 +362,7 @@ def main():
         for o_privilege in o_privileges:
             o_privileges_list.append(o_name + _PRIVILEGE_SEPARATOR + o_privilege.upper())
 
-    if oracle_home:
-        os.environ['ORACLE_HOME'] = oracle_home
-
-    # Setting connection
-    connection_parameters = {}
-    if username and password:
-        connection_parameters['user'] = username
-        connection_parameters['password'] = password
-        connection_parameters['dsn'] = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-    else:  # Using Oracle wallet
-        connection_parameters['dsn'] = service_name
-
-    if mode == 'sysdba':
-        connection_parameters['mode'] = cx_Oracle.SYSDBA
-
-    # Connecting
-    try:
-        connection = cx_Oracle.connect(**connection_parameters)
-        cursor = connection.cursor()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code)
-
-    ddls = []
+    ora_db = OraDB(module)
     diff = {'before': {'grantee': grantee}, 'after': {'grantee': grantee}}
 
     if state == 'identical':

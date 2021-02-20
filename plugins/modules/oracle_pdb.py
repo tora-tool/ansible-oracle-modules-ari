@@ -265,44 +265,12 @@ read_only:
 '''
 
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import os
-
-try:
-    HAS_CX_ORACLE = True
-    import cx_Oracle
-except ImportError:
-    HAS_CX_ORACLE = False
-
-
-def execute_select(sql, params=None):
-    """Executes a select query and return fetched data"""
-    if params is None:
-        params = {}
-    try:
-        return cursor.execute(sql, params).fetchall()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=sql, params=params)
-
-
-def execute_ddl(request):
-    """Execute a DDL request if not in check_mode"""
-    global changed
-    try:
-        if not module.check_mode:
-            cursor.execute(request)
-            ddls.append(request)
-        else:
-            ddls.append('--' + request)
-        changed = True
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=request, ddls=ddls)
+from ansible_collections.ari_stark.ansible_oracle_modules.plugins.module_utils.ora_db import OraDB
 
 
 def get_existing_pdb(pdb_name):
-    """Get the data of the existing PDB"""
-    result = execute_select('select name, open_mode from v$pdbs where name = :name', {'name': pdb_name})
+    """Get the data of the existing PDB."""
+    result = ora_db.execute_select('select name, open_mode from v$pdbs where name = :name', {'name': pdb_name})
 
     if result:
         pdb_name = result[0][0]
@@ -318,7 +286,7 @@ def get_existing_pdb(pdb_name):
 
 def create_pdb(pdb_name, pdb_admin_username, pdb_admin_password, clone_from, snapshot_copy, plug_file, file_dest,
                file_name_convert, roles):
-    """Create a PDB"""
+    """Create a PDB."""
     create_ddl = 'create pluggable database %s' % pdb_name
     if pdb_admin_username:  # Create from seed
         create_ddl += ' admin user %s identified by "%s"' % (pdb_admin_username, pdb_admin_password)
@@ -337,60 +305,63 @@ def create_pdb(pdb_name, pdb_admin_username, pdb_admin_password, clone_from, sna
     if file_dest:
         create_ddl += " create_file_dest = '%s'" % file_dest
 
-    execute_ddl(create_ddl)
+    ora_db.execute_ddl(create_ddl)
 
 
 def ensure_present(pdb_name):
     """Ensure a PDB is present."""
     if existing_pdb:
-        module.exit_json(msg='PDB %s exists.' % pdb_name, changed=changed, diff=diff, ddls=ddls, **existing_pdb)
+        module.exit_json(msg='PDB %s exists.' % pdb_name, changed=changed(), diff=diff, ddls=ora_db.ddls,
+                         **existing_pdb)
     else:
-        module.fail_json(msg="PDB %s doesn't exist." % pdb_name, changed=changed, ddls=ddls)
+        module.fail_json(msg="PDB %s doesn't exist." % pdb_name, changed=changed(), ddls=ora_db.ddls)
 
 
 def ensure_opened(pdb_name, read_only):
     """Ensure a PDB is opened."""
     if not existing_pdb:
-        module.fail_json(msg="PDB %s doesn't exist." % pdb_name, changed=changed, ddls=ddls)
+        module.fail_json(msg="PDB %s doesn't exist." % pdb_name, changed=changed(), ddls=ora_db.ddls)
 
     if existing_pdb['state'] != 'opened' or existing_pdb['read_only'] != read_only:
-        execute_ddl(
+        ora_db.execute_ddl(
             'alter pluggable database %s open %s force' % (pdb_name, 'read only' if read_only else 'read write'))
-    module.exit_json(msg='PDB %s is opened.' % pdb_name, changed=changed, diff=diff, ddls=ddls)
+    module.exit_json(msg='PDB %s is opened.' % pdb_name, changed=changed(), diff=diff, ddls=ora_db.ddls)
 
 
 def ensure_closed(pdb_name):
     """Ensure a PDB is closed."""
     if not existing_pdb:
-        module.fail_json(msg="PDB %s doesn't exist." % pdb_name, changed=changed, ddls=ddls)
+        module.fail_json(msg="PDB %s doesn't exist." % pdb_name, changed=changed(), ddls=ora_db.ddls)
 
     if existing_pdb['state'] != 'closed':
-        execute_ddl('alter pluggable database %s close immediate instances = all' % pdb_name)
-    module.exit_json(msg='PDB %s is closed.' % pdb_name, changed=changed, diff=diff, ddls=ddls)
+        ora_db.execute_ddl('alter pluggable database %s close immediate instances = all' % pdb_name)
+    module.exit_json(msg='PDB %s is closed.' % pdb_name, changed=changed(), diff=diff, ddls=ora_db.ddls)
 
 
 def ensure_absent(pdb_name, unplug_file):
     """Ensure a PDB is absent."""
     if not existing_pdb:
-        module.exit_json(msg="PDB %s doesn't exist." % pdb_name, changed=changed, diff=diff, ddls=ddls)
+        module.exit_json(msg="PDB %s doesn't exist." % pdb_name, changed=changed(), diff=diff, ddls=ora_db.ddls)
 
     if existing_pdb['state'] == 'opened':
-        execute_ddl('alter pluggable database %s close immediate instances = all' % pdb_name)
+        ora_db.execute_ddl('alter pluggable database %s close immediate instances = all' % pdb_name)
 
     if unplug_file:
-        execute_ddl("alter pluggable database %s unplug into '%s'" % (pdb_name, unplug_file))
-        execute_ddl('drop pluggable database %s keep datafiles' % pdb_name)
+        ora_db.execute_ddl("alter pluggable database %s unplug into '%s'" % (pdb_name, unplug_file))
+        ora_db.execute_ddl('drop pluggable database %s keep datafiles' % pdb_name)
     else:
-        execute_ddl('drop pluggable database %s including datafiles' % pdb_name)
-    module.exit_json(msg='PDB %s dropped.' % pdb_name, changed=changed, diff=diff, ddls=ddls)
+        ora_db.execute_ddl('drop pluggable database %s including datafiles' % pdb_name)
+    module.exit_json(msg='PDB %s dropped.' % pdb_name, changed=changed(), diff=diff, ddls=ora_db.ddls)
+
+
+def changed():
+    return len(ora_db.ddls) != 0
 
 
 def main():
     global module
-    global cursor
+    global ora_db
     global diff
-    global ddls
-    global changed
     global existing_pdb
 
     module = AnsibleModule(
@@ -423,56 +394,22 @@ def main():
         supports_check_mode=True,
     )
 
-    if not HAS_CX_ORACLE:
-        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
-
     clone_from = module.params['clone_from']
     file_dest = module.params['file_dest']
     file_name_convert = module.params['file_name_convert']
-    hostname = module.params['hostname']
-    mode = module.params['mode']
-    oracle_home = module.params['oracle_home']
-    password = module.params['password']
     pdb_admin_password = module.params['pdb_admin_password']
     pdb_admin_username = module.params['pdb_admin_username']
     pdb_name = module.params['pdb_name']
     plug_file = module.params['plug_file']
-    port = module.params['port']
     read_only = module.params['read_only']
     roles = module.params['roles']
-    service_name = module.params['service_name']
     snapshot_copy = module.params['snapshot_copy']
     state = module.params['state']
     unplug_file = module.params['unplug_file']
-    username = module.params['username']
 
-    if oracle_home:
-        os.environ['ORACLE_HOME'] = oracle_home
-
-    # Setting connection
-    connection_parameters = {}
-    if username and password:
-        connection_parameters['user'] = username
-        connection_parameters['password'] = password
-        connection_parameters['dsn'] = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-    else:  # Using Oracle wallet
-        connection_parameters['dsn'] = service_name
-
-    if mode == 'sysdba':
-        connection_parameters['mode'] = cx_Oracle.SYSDBA
-
-    # Connecting
-    try:
-        connection = cx_Oracle.connect(**connection_parameters)
-        cursor = connection.cursor()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code)
-
-    ddls = []
+    ora_db = OraDB(module)
     diff = {'before': {'pdb_name': pdb_name},
             'after': {'pdb_name': pdb_name, 'state': state, 'read_only': read_only}}
-    changed = False
     existing_pdb = get_existing_pdb(pdb_name)  # Get existing PDB
 
     if not existing_pdb and (clone_from or pdb_admin_username or plug_file) \

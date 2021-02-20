@@ -1,5 +1,9 @@
 # Changelog #
 
+## 1.0.2 ##
+
+* Add module utilities for db operations
+
 ## 1.0.1 ##
 
 * Updated the readme.

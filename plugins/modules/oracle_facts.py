@@ -174,83 +174,56 @@ users:
 '''
 
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import os
-
-try:
-    HAS_CX_ORACLE = True
-    import cx_Oracle
-except ImportError:
-    HAS_CX_ORACLE = False
-
-
-def execute_select(sql):
-    """Executes a select query and return fetched data"""
-    try:
-        return cursor.execute(sql).fetchall()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=sql)
-
-
-def execute_select_to_dict(sql):
-    """Executes a select query and return a list of dictionaries : one dictionary for each row"""
-    try:
-        cursor.execute(sql)
-        column_names = [description[0].lower() for description in
-                        cursor.description]  # First element is the column name.
-        return [dict(zip(column_names, row)) for row in cursor]
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=sql)
+from ansible_collections.ari_stark.ansible_oracle_modules.plugins.module_utils.ora_db import OraDB
 
 
 def get_database():
-    """Get the v$database content"""
-    return execute_select_to_dict('select * from v$database')[0]  # The table is a oneliner.
+    """Get the v$database content."""
+    return ora_db.execute_select_to_dict('select * from v$database')[0]  # The table is a oneliner.
 
 
 def get_instance():
-    """Get the v$instance content"""
-    return execute_select_to_dict('select * from v$instance')[0]  # The table is a oneliner.
+    """Get the v$instance content."""
+    return ora_db.execute_select_to_dict('select * from v$instance')[0]  # The table is a oneliner.
 
 
 def get_options():
-    """Get the v$option content"""
-    options = execute_select('select parameter, value from v$option order by parameter')
+    """Get the v$option content."""
+    options = ora_db.execute_select('select parameter, value from v$option order by parameter')
     parameters, values = zip(*options)
     return dict(zip(parameters, values))
 
 
 def get_parameters():
-    """Get the v$parameter content"""
-    param_list = execute_select('select name, value, isdefault from v$parameter order by name')
+    """Get the v$parameter content."""
+    param_list = ora_db.execute_select('select name, value, isdefault from v$parameter order by name')
     names, values, isdefaults = zip(*param_list)  # Splits...
     return {names[i]: {'value': values[i], 'isdefault': isdefaults[i]} for i in range(0, len(names))}  # ... and groups.
 
 
 def get_pdbs():
-    """Get the v$pdbs content"""
-    return execute_select_to_dict(
+    """Get the v$pdbs content."""
+    return ora_db.execute_select_to_dict(
         'select con_id, rawtohex(guid) guid_hex, name, open_mode, total_size from v$pdbs order by name')
 
 
 def get_racs():
-    """Get the gv$instance content"""
-    return execute_select_to_dict(
+    """Get the gv$instance content."""
+    return ora_db.execute_select_to_dict(
         'select inst_id, instance_name, host_name, startup_time from gv$instance order by inst_id')
 
 
 def get_redologs():
-    """Get the v$log content"""
-    return execute_select_to_dict(
+    """Get the v$log content."""
+    return ora_db.execute_select_to_dict(
         'select group#, thread#, sequence#, round(bytes/power(1024, 2)) mb, blocksize, archived, status'
         '  from v$log'
         ' order by thread#, group#')
 
 
 def get_tablespaces():
-    """Get the v$tablespace and v$datafile content"""
-    return execute_select_to_dict(
+    """Get the v$tablespace and v$datafile content."""
+    return ora_db.execute_select_to_dict(
         'select ts.con_id, ts.name, ts.bigfile, df.name datafile_name, round(df.bytes/power(1024, 2)) size_mb'
         '  from v$tablespace ts, v$datafile df'
         ' where df.con_id = ts.con_id and df.ts# = ts.ts#'
@@ -258,8 +231,8 @@ def get_tablespaces():
 
 
 def get_temp_tablespaces():
-    """Get the v$tablespace and v$tempfile content"""
-    return execute_select_to_dict(
+    """Get the v$tablespace and v$tempfile content."""
+    return ora_db.execute_select_to_dict(
         'select ts.con_id, ts.name, ts.bigfile, tf.name tempfile_name, round(tf.bytes/power(1024, 2)) size_mb'
         '  from v$tablespace ts, v$tempfile tf'
         ' where tf.con_id = ts.con_id and tf.ts# = ts.ts#'
@@ -267,26 +240,26 @@ def get_temp_tablespaces():
 
 
 def get_userenv():
-    """Get data of current user"""
-    return execute_select_to_dict("select sys_context('USERENV','CURRENT_USER') current_user,"
-                                  "       sys_context('USERENV','DATABASE_ROLE') database_role,"
-                                  "       sys_context('USERENV','ISDBA') isdba,"
-                                  "       sys_context('USERENV','ORACLE_HOME') oracle_home,"
-                                  "       to_number(sys_context('USERENV','CON_ID')) con_id,"
-                                  "       sys_context('USERENV','CON_NAME') con_name"
-                                  "  from dual")[0]
+    """Get data of current user."""
+    return ora_db.execute_select_to_dict("select sys_context('USERENV','CURRENT_USER') current_user,"
+                                         "       sys_context('USERENV','DATABASE_ROLE') database_role,"
+                                         "       sys_context('USERENV','ISDBA') isdba,"
+                                         "       sys_context('USERENV','ORACLE_HOME') oracle_home,"
+                                         "       to_number(sys_context('USERENV','CON_ID')) con_id,"
+                                         "       sys_context('USERENV','CON_NAME') con_name"
+                                         "  from dual")[0]
 
 
 def get_users():
-    """Get the all_users content"""
-    return execute_select_to_dict(
+    """Get the all_users content."""
+    return ora_db.execute_select_to_dict(
         "select username, user_id, created from all_users where oracle_maintained = 'N' order by username")
 
 
 # Ansible code
 def main():
     global module
-    global cursor
+    global ora_db
 
     module = AnsibleModule(
         argument_spec=dict(
@@ -307,18 +280,8 @@ def main():
         supports_check_mode=True,
     )
 
-    if not HAS_CX_ORACLE:
-        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
-
     # Connect to database
     gather_subset = set(module.params['gather_subset'])
-    hostname = module.params['hostname']
-    mode = module.params['mode']
-    oracle_home = module.params['oracle_home']
-    password = module.params['password']
-    port = module.params['port']
-    service_name = module.params['service_name']
-    username = module.params['username']
 
     if 'all' in gather_subset:
         gather_subset.remove('all')
@@ -327,31 +290,9 @@ def main():
     if 'min' in gather_subset:
         gather_subset.remove('min')
         gather_subset.add('database')
-    if oracle_home:
-        os.environ['ORACLE_HOME'] = oracle_home
 
-    version = None
-
-    # Setting connection
-    connection_parameters = {}
-    if username and password:
-        connection_parameters['user'] = username
-        connection_parameters['password'] = password
-        connection_parameters['dsn'] = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-    else:  # Using Oracle wallet
-        connection_parameters['dsn'] = service_name
-
-    if mode == 'sysdba':
-        connection_parameters['mode'] = cx_Oracle.SYSDBA
-
-    # Connecting
-    try:
-        connection = cx_Oracle.connect(**connection_parameters)
-        version = connection.version
-        cursor = connection.cursor()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code)
+    ora_db = OraDB(module)
+    version = ora_db.version
 
     if version < '12.0':
         module.fail_json(msg='Database version must be 12 or greater.', changed=False)

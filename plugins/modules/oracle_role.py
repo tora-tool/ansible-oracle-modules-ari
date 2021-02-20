@@ -129,43 +129,13 @@ ddls:
 '''
 
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import os
-
-try:
-    HAS_CX_ORACLE = True
-    import cx_Oracle
-except ImportError:
-    HAS_CX_ORACLE = False
-
-
-def execute_select(sql, params=None):
-    """Executes a select query and return fetched data"""
-    if params is None:
-        params = {}
-    try:
-        return cursor.execute(sql, params).fetchall()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=sql, params=params)
-
-
-def execute_ddl(request):
-    """Execute a DDL request if not in check_mode"""
-    try:
-        if not module.check_mode:
-            cursor.execute(request)
-            ddls.append(request)
-        else:
-            ddls.append('--' + request)
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=request, ddls=ddls)
+from ansible_collections.ari_stark.ansible_oracle_modules.plugins.module_utils.ora_db import OraDB
 
 
 def get_existing_role(role):
-    """Get the existing role with is authentication type"""
-    result = execute_select('select role, authentication_type from dba_roles where role = :role',
-                            {'role': role})
+    """Get the existing role with is authentication type."""
+    result = ora_db.execute_select('select role, authentication_type from dba_roles where role = :role',
+                                   {'role': role})
 
     if result:
         role = result[0][0]
@@ -202,27 +172,26 @@ def ensure_present(role, identified_method, identified_value):
     else:
         sql += 'not identified'
 
-    execute_ddl(sql)
+    ora_db.execute_ddl(sql)
     if not prev_role:
-        module.exit_json(msg="Role '%s' created." % role, changed=True, diff=diff, ddls=ddls)
+        module.exit_json(msg="Role '%s' created." % role, changed=True, diff=diff, ddls=ora_db.ddls)
     else:
-        module.exit_json(msg="Role '%s' changed." % role, changed=True, diff=diff, ddls=ddls)
+        module.exit_json(msg="Role '%s' changed." % role, changed=True, diff=diff, ddls=ora_db.ddls)
 
 
 def ensure_absent(role):
     """Drop the role if needed."""
     if get_existing_role(role):
-        execute_ddl('drop role %s' % role)
-        module.exit_json(msg="Role '%s' dropped." % role, changed=True, diff=diff, ddls=ddls)
+        ora_db.execute_ddl('drop role %s' % role)
+        module.exit_json(msg="Role '%s' dropped." % role, changed=True, diff=diff, ddls=ora_db.ddls)
     else:
         module.exit_json(msg="Role '%s' already absent." % role, changed=False)
 
 
 def main():
     global module
-    global cursor
+    global ora_db
     global diff
-    global ddls
 
     module = AnsibleModule(
         argument_spec=dict(
@@ -245,49 +214,16 @@ def main():
         supports_check_mode=True,
     )
 
-    if not HAS_CX_ORACLE:
-        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
-
     identified_method = module.params['identified_method']
     identified_value = module.params['identified_value']
-    hostname = module.params['hostname']
-    mode = module.params['mode']
-    oracle_home = module.params['oracle_home']
-    password = module.params['password']
-    port = module.params['port']
     role = module.params['role']
-    service_name = module.params['service_name']
     state = module.params['state']
-    username = module.params['username']
 
     # Transforming parameter
     role = role.upper()
     identified_method = identified_method.upper()
 
-    if oracle_home:
-        os.environ['ORACLE_HOME'] = oracle_home
-
-    # Setting connection
-    connection_parameters = {}
-    if username and password:
-        connection_parameters['user'] = username
-        connection_parameters['password'] = password
-        connection_parameters['dsn'] = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-    else:  # Using Oracle wallet
-        connection_parameters['dsn'] = service_name
-
-    if mode == 'sysdba':
-        connection_parameters['mode'] = cx_Oracle.SYSDBA
-
-    # Connecting
-    try:
-        connection = cx_Oracle.connect(**connection_parameters)
-        cursor = connection.cursor()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code)
-
-    ddls = []
+    ora_db = OraDB(module)
     diff = {'before': {'role': role},
             'after': {'role': role, 'state': state, 'identified_method': identified_method}}
 

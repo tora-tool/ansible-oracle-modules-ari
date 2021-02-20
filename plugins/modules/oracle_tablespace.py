@@ -222,13 +222,8 @@ ddls:
 
 import re
 
-from ansible.module_utils.basic import AnsibleModule, os
-
-try:
-    HAS_CX_ORACLE = True
-    import cx_Oracle
-except ImportError:
-    HAS_CX_ORACLE = False
+from ansible.module_utils.basic import AnsibleModule
+from ansible_collections.ari_stark.ansible_oracle_modules.plugins.module_utils.ora_db import OraDB
 
 
 class Size:
@@ -404,36 +399,32 @@ def get_existing_tablespace(tablespace):
 
     params = {'tn': tablespace}
 
-    try:
-        # One tablespace max can exist with a specific name and every data file should have the same online_status.
-        row = cursor.execute(sql, params).fetchone()
+    # One tablespace max can exist with a specific name and every data file should have the same online_status.
+    row = ora_db.execute_select(sql, params, fetchone=True)
 
-        if row:
-            # Convert data
-            state = 'online' if row[0] == 'ONLINE' else 'offline'
-            read_only = (row[1] == 'READ ONLY')
-            file_type = FileType(row[2] == 'YES')
-            content_type = ContentType({'PERMANENT': 'permanent', 'UNDO': 'undo', 'TEMPORARY': 'temp'}[row[3]])
+    if row:
+        # Convert data
+        state = 'online' if row[0] == 'ONLINE' else 'offline'
+        read_only = (row[1] == 'READ ONLY')
+        file_type = FileType(row[2] == 'YES')
+        content_type = ContentType({'PERMANENT': 'permanent', 'UNDO': 'undo', 'TEMPORARY': 'temp'}[row[3]])
 
-            diff['before']['state'] = state
-            diff['before']['read_only'] = read_only
-            diff['before']['bigfile'] = file_type.is_bigfile()
-            diff['before']['content'] = content_type.content
+        diff['before']['state'] = state
+        diff['before']['read_only'] = read_only
+        diff['before']['bigfile'] = file_type.is_bigfile()
+        diff['before']['content'] = content_type.content
 
-            is_default = bool(cursor.execute(sql_is_default, params).fetchone())
-            diff['before']['default'] = is_default
+        is_default = bool(ora_db.execute_select(sql_is_default, params, fetchone=True))
+        diff['before']['default'] = is_default
 
-            # Get previous datafiles
-            datafiles = get_existing_datafiles(tablespace)
+        # Get previous datafiles
+        datafiles = get_existing_datafiles(tablespace)
 
-            return {'state': state, 'read_only': read_only, 'file_type': file_type, 'content_type': content_type,
-                    'datafiles': datafiles, 'default': is_default}
-        else:
-            diff['before']['state'] = 'absent'
-            return None
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=sql, parameters=params, ddls=ddls)
+        return {'state': state, 'read_only': read_only, 'file_type': file_type, 'content_type': content_type,
+                'datafiles': datafiles, 'default': is_default}
+    else:
+        diff['before']['state'] = 'absent'
+        return None
 
 
 def get_existing_datafiles(tablespace):
@@ -451,32 +442,15 @@ def get_existing_datafiles(tablespace):
           "   and ts.tablespace_name = df.tablespace_name"
     params = {'tn': tablespace}
 
-    try:
-        rows = cursor.execute(sql, params).fetchall()
-        datafiles = []
+    rows = ora_db.execute_select(sql, params)
+    datafiles = []
 
-        for row in rows:
-            datafiles.append(
-                Datafile(path=row[0], size=row[1], autoextend=row[2] == 'YES', nextsize=row[3], maxsize=row[4],
-                         bigfile=row[5] == 'YES', block_size=row[6]))
-        diff['before']['datafiles'] = [datafile.asdict() for datafile in datafiles]
-        return datafiles
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=sql, parameters=params, ddls=ddls)
-
-
-def execute_ddl(request):
-    """Execute a DDL request if not in check_mode"""
-    try:
-        if not module.check_mode:
-            cursor.execute(request)
-            ddls.append(request)
-        else:
-            ddls.append('--' + request)
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=request, ddls=ddls)
+    for row in rows:
+        datafiles.append(
+            Datafile(path=row[0], size=row[1], autoextend=row[2] == 'YES', nextsize=row[3], maxsize=row[4],
+                     bigfile=row[5] == 'YES', block_size=row[6]))
+    diff['before']['datafiles'] = [datafile.asdict() for datafile in datafiles]
+    return datafiles
 
 
 def ensure_datafile_state(prev_tablespace, tablespace, datafiles, content_type):
@@ -491,16 +465,16 @@ def ensure_datafile_state(prev_tablespace, tablespace, datafiles, content_type):
             prev_datafile = [d for d in prev_tablespace['datafiles'] if d.path == datafile.path][0]
             # What can change if not autoextend : size
             if datafile.needs_resize(prev_datafile):
-                execute_ddl("alter database datafile '%s' resize %s" % (datafile.path, datafile.size))
+                ora_db.execute_ddl("alter database datafile '%s' resize %s" % (datafile.path, datafile.size))
                 changed = True
 
             # What can change if autoextend : next_size and max_size
             if datafile.needs_change_autoextend(prev_datafile):
-                execute_ddl("alter database %s '%s' %s" % (
+                ora_db.execute_ddl("alter database %s '%s' %s" % (
                     content_type.datafile_clause(), datafile.path, datafile.autoextend_clause()))
                 changed = True
         else:  # or create it
-            execute_ddl(
+            ora_db.execute_ddl(
                 'alter tablespace %s add %s %s' % (
                     tablespace, content_type.datafile_clause(), datafile.data_file_clause()))
             changed = True
@@ -511,7 +485,7 @@ def ensure_datafile_state(prev_tablespace, tablespace, datafiles, content_type):
     for datafile in prev_tablespace['datafiles']:
         # If it isn't wanted, drop it
         if datafile.path not in wanted_datafile_paths:
-            execute_ddl(
+            ora_db.execute_ddl(
                 "alter tablespace %s drop %s '%s'" % (tablespace, content_type.datafile_clause(), datafile.path))
             changed = True
 
@@ -531,13 +505,13 @@ def ensure_present(tablespace, state, read_only, datafiles, file_type, content_t
         if not prev_tablespace['file_type'].__eq__(file_type):
             module.fail_json(msg='Cannot convert tablespace %s from %s to %s !' %
                                  (tablespace, prev_tablespace['file_type'], file_type),
-                             diff=diff, ddls=ddls)
+                             diff=diff, ddls=ora_db.ddls)
 
         # Check content type, because we can't switch from one to another.
         if not prev_tablespace['content_type'].__eq__(content_type):
             module.fail_json(msg='Cannot convert tablespace %s from %s to %s !' %
                                  (tablespace, prev_tablespace['content_type'], content_type),
-                             diff=diff, ddls=ddls)
+                             diff=diff, ddls=ora_db.ddls)
 
         if ensure_datafile_state(prev_tablespace, tablespace, datafiles, content_type):
             changed = True
@@ -545,42 +519,43 @@ def ensure_present(tablespace, state, read_only, datafiles, file_type, content_t
         # Managing online/offline state
         if prev_tablespace['state'] != state:
             ddl = 'alter tablespace %s %s' % (tablespace, state)
-            execute_ddl(ddl)
+            ora_db.execute_ddl(ddl)
             changed = True
 
         # Managing read write/read only state
         if prev_tablespace['read_only'] != read_only:
             ddl = 'alter tablespace %s %s' % (tablespace, 'read only' if read_only else 'read write')
-            execute_ddl(ddl)
+            ora_db.execute_ddl(ddl)
             changed = True
 
         # Managing default tablespace
         if default and not prev_tablespace['default']:
             ddl = 'alter database default %s tablespace %s' % (content_type.create_clause(), tablespace)
-            execute_ddl(ddl)
+            ora_db.execute_ddl(ddl)
             changed = True
 
         # Nothing more to do.
         if changed:
-            module.exit_json(changed=True, msg="Tablespace %s changed." % tablespace, diff=diff, ddls=ddls)
+            module.exit_json(changed=True, msg="Tablespace %s changed." % tablespace, diff=diff, ddls=ora_db.ddls)
         else:
-            module.exit_json(changed=False, msg="Tablespace %s already exists." % tablespace, diff=diff, ddls=ddls)
+            module.exit_json(changed=False, msg="Tablespace %s already exists." % tablespace, diff=diff,
+                             ddls=ora_db.ddls)
     else:  # Tablespace needs to be created
         files_specifications = ', '.join(datafile.data_file_clause() for datafile in datafiles)
         ddl = 'create %s %s tablespace %s %s %s' % (
             file_type, content_type.create_clause(), tablespace, content_type.datafile_clause(), files_specifications)
-        execute_ddl(ddl)
+        ora_db.execute_ddl(ddl)
 
         # Managing default tablespace
         if default:
             ddl = 'alter database default %s tablespace %s' % (content_type.create_clause(), tablespace)
-            execute_ddl(ddl)
+            ora_db.execute_ddl(ddl)
 
         if read_only:
             ddl = 'alter tablespace %s read only' % tablespace
-            execute_ddl(ddl)
+            ora_db.execute_ddl(ddl)
 
-        module.exit_json(changed=True, msg='Tablespace %s created.' % tablespace, diff=diff, ddls=ddls)
+        module.exit_json(changed=True, msg='Tablespace %s created.' % tablespace, diff=diff, ddls=ora_db.ddls)
 
 
 def ensure_absent(tablespace):
@@ -588,17 +563,16 @@ def ensure_absent(tablespace):
     prev_tablespace = get_existing_tablespace(tablespace)
 
     if prev_tablespace:
-        execute_ddl('drop tablespace %s including contents and datafiles' % tablespace)
-        module.exit_json(changed=True, msg='Tablespace %s dropped.' % tablespace, diff=diff, ddls=ddls)
+        ora_db.execute_ddl('drop tablespace %s including contents and datafiles' % tablespace)
+        module.exit_json(changed=True, msg='Tablespace %s dropped.' % tablespace, diff=diff, ddls=ora_db.ddls)
     else:
-        module.exit_json(changed=False, msg="Tablespace %s doesn't exist." % tablespace, diff=diff, ddls=ddls)
+        module.exit_json(changed=False, msg="Tablespace %s doesn't exist." % tablespace, diff=diff, ddls=ora_db.ddls)
 
 
 def main():
     global module
-    global cursor
+    global ora_db
     global diff
-    global ddls
 
     module = AnsibleModule(
         argument_spec=dict(
@@ -629,27 +603,17 @@ def main():
         supports_check_mode=True,
     )
 
-    if not HAS_CX_ORACLE:
-        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
-
     autoextend = module.params['autoextend']
     bigfile = module.params['bigfile']
     content = module.params['content']
     datafile_names = module.params['datafiles']
     default = module.params['default']
-    hostname = module.params['hostname']
     maxsize = module.params['maxsize']
-    mode = module.params['mode']
     nextsize = module.params['nextsize']
-    oracle_home = module.params['oracle_home']
-    password = module.params['password']
-    port = module.params['port']
     read_only = module.params['read_only']
-    service_name = module.params['service_name']
     size = module.params['size']
     state = module.params['state']
     tablespace = module.params['tablespace']
-    username = module.params['username']
 
     # Transforming parameters
     tablespace = tablespace.upper()
@@ -662,28 +626,7 @@ def main():
     file_type = FileType(bigfile)
     content_type = ContentType(content)
 
-    if oracle_home:
-        os.environ['ORACLE_HOME'] = oracle_home
-
-    # Setting connection
-    connection_parameters = {}
-    if username and password:
-        connection_parameters['user'] = username
-        connection_parameters['password'] = password
-        connection_parameters['dsn'] = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-    else:  # Using Oracle wallet
-        connection_parameters['dsn'] = service_name
-
-    if mode == 'sysdba':
-        connection_parameters['mode'] = cx_Oracle.SYSDBA
-
-    # Connecting
-    try:
-        connection = cx_Oracle.connect(**connection_parameters)
-        cursor = connection.cursor()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code)
+    ora_db = OraDB(module)
 
     # Initializing diff
     diff = {'before': {'tablespace': tablespace},
@@ -693,8 +636,6 @@ def main():
                       'bigfile': file_type.is_bigfile(),
                       'content': content_type.content,
                       'default': default, }}
-
-    ddls = []
 
     # Doing actions
     if state in ('online', 'offline'):

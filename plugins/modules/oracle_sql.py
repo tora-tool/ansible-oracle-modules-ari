@@ -147,62 +147,20 @@ statements:
 
 import re
 
-from ansible.module_utils.basic import AnsibleModule, os
+from ansible.module_utils.basic import AnsibleModule
+from ansible_collections.ari_stark.ansible_oracle_modules.plugins.module_utils.ora_db import OraDB
 
-try:
-    HAS_CX_ORACLE = True
-    import cx_Oracle
-except ImportError:
-    HAS_CX_ORACLE = False
-
-
-def execute_select(sql):
-    """Executes a select query and return fetched data"""
-    try:
-        return cursor.execute(sql).fetchall()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=sql)
-
-
-def execute_statement(sql):
-    """Executes a query"""
-    try:
-        if not module.check_mode:
-            if 'dbms_output.put_line' in sql.lower():
-                cursor.callproc('dbms_output.enable', [None])
-                cursor.execute(sql)
-
-                chunk_size = 100  # Get lines by batch of 100
-                # create variables to hold the output
-                lines_var = cursor.arrayvar(str, chunk_size)  # out variable
-                num_lines_var = cursor.var(int)  # in/out variable
-                num_lines_var.setvalue(0, chunk_size)
-
-                # fetch the text that was added by PL/SQL
-                while True:
-                    cursor.callproc('dbms_output.get_lines', (lines_var, num_lines_var))
-                    num_lines = num_lines_var.getvalue()
-                    output_lines.extend(lines_var.getvalue()[:num_lines])
-                    if num_lines < chunk_size:  # if less lines than the chunk value was fetched, it's the end
-                        break
-            else:
-                cursor.execute(sql)
-            statements.append(sql)
-        else:
-            statements.append('--' + sql)
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code, request=sql)
+output_lines = []
 
 
 def execute_statements(script):
-    """Executes several statements.
+    """Execute several statements.
 
     This function determines if it's dealing with PL/SQL blocks or multi-statement queries. It cannot deal with both.
     PL/SQL blocks is defined by a trailing slash (/).
     If there is no trailing slash, it's considered multi-statement queries separated by a semicolon.
     """
+    global output_lines
 
     if re.search(r'/\s*$', script):  # If it's PL/SQL blocks
         seperator = r'^\s*/\s*$'
@@ -211,14 +169,12 @@ def execute_statements(script):
 
     for query in re.split(seperator, script, flags=re.MULTILINE):
         if query.strip():
-            execute_statement(query.strip())
+            output_lines += ora_db.execute_statement(query.strip())
 
 
 def main():
     global module
-    global cursor
-    global statements
-    global output_lines
+    global ora_db
 
     module = AnsibleModule(
         argument_spec=dict(
@@ -237,63 +193,28 @@ def main():
         supports_check_mode=True,
     )
 
-    if not HAS_CX_ORACLE:
-        module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
-
-    hostname = module.params['hostname']
-    mode = module.params['mode']
-    oracle_home = module.params['oracle_home']
-    password = module.params['password']
-    port = module.params['port']
     script = module.params['script']
-    service_name = module.params['service_name']
     sql = module.params['sql']
-    username = module.params['username']
 
-    if oracle_home:
-        os.environ['ORACLE_HOME'] = oracle_home
-
-    # Setting connection
-    connection_parameters = {}
-    if username and password:
-        connection_parameters['user'] = username
-        connection_parameters['password'] = password
-        connection_parameters['dsn'] = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-    else:  # Using Oracle wallet
-        connection_parameters['dsn'] = service_name
-
-    if mode == 'sysdba':
-        connection_parameters['mode'] = cx_Oracle.SYSDBA
-
-    # Connecting
-    try:
-        connection = cx_Oracle.connect(**connection_parameters)
-        connection.autocommit = True
-        cursor = connection.cursor()
-    except cx_Oracle.DatabaseError as e:
-        error = e.args[0]
-        module.fail_json(msg=error.message, code=error.code)
-
-    statements = []
-    output_lines = []
+    ora_db = OraDB(module)
 
     if sql:  # Mono statement.
         if re.match(r'^\s*select\s+', sql, re.IGNORECASE):
-            result = execute_select(sql)
+            result = ora_db.execute_select(sql)
             module.exit_json(msg='Select statement executed.', changed=False, data=result)
         else:
-            execute_statement(sql)
-            module.exit_json(msg='DML or DDL statement executed.', changed=True, statements=statements)
+            ora_db.execute_statement(sql)
+            module.exit_json(msg='DML or DDL statement executed.', changed=True, statements=ora_db.ddls)
     elif not script.startswith('@'):  # Multi statement
         execute_statements(script)
-        module.exit_json(msg='DML or DDL statements executed.', changed=True, statements=statements,
+        module.exit_json(msg='DML or DDL statements executed.', changed=True, statements=ora_db.ddls,
                          output_lines=output_lines)
     else:  # SQL file
         try:
             file_name = script.lstrip('@')
             with open(file_name, 'r') as f:
                 execute_statements(f.read())
-            module.exit_json(msg='DML or DDL statements executed.', changed=True, statements=statements,
+            module.exit_json(msg='DML or DDL statements executed.', changed=True, statements=ora_db.ddls,
                              output_lines=output_lines)
         except IOError as e:
             module.fail_json(msg=str(e), changed=False)
