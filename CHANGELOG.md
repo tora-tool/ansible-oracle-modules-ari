@@ -1,5 +1,11 @@
 # Changelog #
 
+## 1.1.0 ##
+
+* Refactor oracle_parameter module
+* Fix ora_db to display ddls on error
+* Fix oracle_user to better check parameters
+
 ## 1.0.2 ##
 
 * Add module utilities for db operations

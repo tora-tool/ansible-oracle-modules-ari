@@ -1,6 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+# Copyright: (c) 2015 Mikael Sandström <oravirt@gmail.com>
+# Copyright: (c) 2021, Ari Stark <ari.stark@netcourrier.com>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
 from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
@@ -10,58 +14,93 @@ DOCUMENTATION = '''
 module: oracle_parameter
 short_description: Manage parameters in an Oracle database
 description:
-    - Manage init parameters in an Oracle database
-
+    - This module manages parameters in an Oracle database.
+    - Parameters value comparison is case sensitive, module wise.
+      To avoid Ansible I(changed) state, check the case of the value.
+    - Hidden parameters can be changed using sysdba privileges.
 version_added: "0.8.0"
+author:
+    - Mikael Sandström (@oravirt)
+    - Ari Stark (@ari-stark)
 options:
     hostname:
         description:
-            - The Oracle database host
-        required: false
+            - Specify the host name or IP address of the database server computer.
         default: localhost
-    port:
-        description:
-            - The listener port number on the host
-        required: false
-        default: 1521
-    service_name:
-        description:
-            - The database service name to connect to
-        required: true
-    user:
-        description:
-            - The Oracle user name to connect to the database
-        required: true
-    password:
-        description:
-            - The Oracle user password for 'user'
-        required: true
+        type: str
     mode:
         description:
-            - The mode with which to connect to the database
-        required: true
+            - This option is the database administration privileges.
         default: normal
-        choices: ['normal','sysdba']
+        type: str
+        choices: ['normal', 'sysdba']
     name:
         description:
-            - The parameter that is being changed
-        required: false
-        default: null
-    value:
+            - Name of the parameter to change.
+        required: true
+        type: str
+    oracle_home:
         description:
-            - The value of the parameter
-        required: false
-        default: null
+            - Define the directory into which all Oracle software is installed.
+            - Define ORACLE_HOME environment variable if set.
+        type: str
+    password:
+        description:
+            - Set the password to use to connect the database server.
+            - Must not be set if using Oracle wallet.
+        type: str
+    port:
+        description:
+            - Specify the listening port on the database server.
+        default: 1521
+        type: int
+    scope:
+        description:
+            - Lets you specify when the change takes effect.
+            - If I(scope=memory), takes effect immediatly but doesn't persist.
+            - If I(scope=spfile), takes effect after next shutdown and persists.
+            - If I(scope=both), takes effect immediatly and persists.
+        default: both
+        type: str
+        choices: ['both', 'memory', 'spfile']
+    service_name:
+        description:
+            - Specify the service name of the database you want to access.
+        required: true
+        type: str
+    sid:
+        description:
+            - Specify the SID of the instance where the value will take effect.
+        default: '*'
+        type: str
     state:
         description:
-            - The intended state of the parameter
-              (present means set to value, absent/reset means the value is reset to its default value).
-        default: present
-        choices: ['present','absent','reset']
+            - The intended state of the parameter.
+            - I(state=present) is synonymous of I(state=defined).
+            - I(state=absent) is synonymous of I(state=default).
+        default: defined
+        type: str
+        choices: ['absent', 'default', 'defined', 'present']
+    username:
+        description:
+            - Set the login to use to connect the database server.
+            - Must not be set if using Oracle wallet.
+        type: str
+        aliases:
+            - user
+    value:
+        description:
+            - The value of the parameter.
+            - I(value) is mandatory is I(state=defined).
+        required: false
+        type: str
+        aliases: ['parameter']
+requirements:
+    - Python module cx_Oracle
+    - Oracle basic tools.
 notes:
-    - cx_Oracle needs to be installed
-requirements: [ "cx_Oracle","re" ]
-author: Mikael Sandström, oravirt@gmail.com, @oravirt
+    - Check mode is supported.
+    - Diff mode is supported.
 '''
 
 EXAMPLES = '''
@@ -69,11 +108,11 @@ EXAMPLES = '''
   oracle_parameter:
     hostname: remote-db-server
     service_name: orcl
-    user: system
+    username: system
     password: manager
     name: db_recovery_file_dest
     value: '+FRA'
-    state: present
+    state: defined
     scope: both
     sid: '*'
 
@@ -81,268 +120,177 @@ EXAMPLES = '''
   oracle_parameter:
     hostname: remote-db-server
     service_name: orcl
-    user: system
+    username: system
     password: manager
     name: db_recovery_file_dest_size
     value: 100G
-    state: present
+    state: defined
     scope: both
 
 - name: Reset the value of open_cursors
   oracle_parameter:
     hostname: remote-db-server
     service_name: orcl
-    user: system
+    username: system
     password: manager
-    name: db_recovery_file_dest_size
-    state: reset
+    name: open_cursors
+    state: default
     scope: spfile
 '''
-try:
-    import cx_Oracle
-except ImportError:
-    cx_oracle_exists = False
-else:
-    cx_oracle_exists = True
+
+RETURN = '''
+ddls:
+    description: Ordered list of DDL requests executed during module execution.
+    returned: always
+    type: list
+    elements: str
+'''
+
+from ansible.module_utils.basic import AnsibleModule, re
+from ansible_collections.ari_stark.ansible_oracle_modules.plugins.module_utils.ora_db import OraDB
+
+MEMORY_SCOPE = 'memory'
+SPFILE_SCOPE = 'spfile'
+ALL_SCOPES = [MEMORY_SCOPE, SPFILE_SCOPE]
 
 
-# Check if the parameter exists
-def check_parameter_exists(module, mode, msg, cursor, name):
-    if not name:
-        module.fail_json(msg='Error: Missing parameter name', changed=False)
-        return False
+def ensure_defined(name, value, scopes, sid, mode):
+    """Ensure the parameter has the correct value, scope wise."""
+    changed = False
 
-    if name.startswith('_') and mode != 'sysdba':
-        module.fail_json(msg='You need sysdba privs to verify underscore parameters (%s), mode: (%s)' % (name, mode),
-                         changed=False)
+    for scope in ALL_SCOPES:
+        # Modify value by scope, for better granularity on "changed" value.
+        if scope in scopes and existing_parameter[scope]['value'] != value:
+            # Oracle doesn't accept string for all parameters.
+            o_value = value if re.match(r'(\w|\d)+', value) else "'%s'" % value
+            ora_db.execute_ddl('alter system set "%s" = %s scope=%s sid=\'%s\'' % (name, o_value, scope, sid))
+            changed = True
 
-    elif name.startswith('_') and mode == 'sysdba':
-        sql = 'select lower(ksppinm) from sys.x$ksppi where ksppinm = lower(\'%s\')' % name
-
+    if changed:
+        _set_diff('after', name, mode)
+        module.exit_json(msg='Parameter %s changed.' % name, changed=True, ddls=ora_db.ddls, diff=diff)
     else:
-        sql = 'select lower(name) from v$parameter where name = lower(\'%s\')' % name
+        module.exit_json(msg='Parameter %s already to specified value.' % name, changed=False)
 
-    try:
-        cursor.execute(sql)
-        result = (cursor.fetchone())
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg[0] = error.message + 'sql: ' + sql
-        return False
 
-    if result > 0:
-        return True
+def ensure_default(name, scopes, sid, mode):
+    """Ensure the parameter has default value, scope wise."""
+    changed = False
+
+    for scope in ALL_SCOPES:
+        # Modify value by scope, for better granularity on "changed" value.
+        if scope in scopes and existing_parameter[scope]['is_modified']:
+            ora_db.execute_ddl('alter system reset "%s" scope=%s sid=\'%s\'' % (name, scope, sid))
+            changed = True
+
+    if changed:
+        _set_diff('after', name, mode)
+        module.exit_json(msg='Parameter %s returned to its default value.' % name, changed=True, ddls=ora_db.ddls,
+                         diff=diff)
     else:
-        msg[0] = 'The parameter (%s) doesn\'t exist' % name
-        return False
+        module.exit_json(msg='Parameter %s already to default value.' % name, changed=False)
 
 
-def modify_parameter(module, mode, msg, cursor, name, value, scope, sid):
-    contains = re.compile(r'[?*$%#()!\s,._/=+-]')
-    starters = ('+', '_', '"', '"_', '/')
-
-    if not name or not value or name is None or value is None:
-        module.fail_json(
-            msg='Error: Missing parameter name or value.'
-                ' (If value is supposed to be an empty string, make sure it\'s quoted)',
-            changed=False)
-        return False
-
-    currval = get_curr_value(module, mode, msg, cursor, name, scope)
-
-    if currval == value.lower() or not currval and value == "''":
-        module.exit_json(msg='The parameter (%s) is already set to %s' % (name, value), changed=False)
-        return True
-
-    if module.check_mode:
-        msg = '%s will be changed, new: %s, old: %s' % (name, value, currval.upper())
-        module.exit_json(msg=msg, changed=True)
-
-    if name.startswith(starters):
-        name = quote_name(name)
-
-    if contains.search(value):
-        value = quote_value(value)
-
-    sql = 'alter system set %s = %s scope=%s sid=\'%s\'' % (name, value, scope, sid)
-    try:
-        cursor.execute(sql)
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg[0] = 'Blergh, something went wrong while changing the value - %s sql: %s' % (error.message, sql)
-        return False
-
-    name = clean_string(name)
-    msg[0] = 'The parameter (%s) has been changed successfully, new: %s, old: %s' % (name, value, currval)
-    return True
+def _set_diff(time, name, mode):
+    """Fill the diff hash with a period of time, before or after."""
+    parameter = get_existing_parameter(name, mode)
+    diff[time]['name'] = parameter['name']
+    diff[time]['sid'] = parameter['sid']
+    for scope in ALL_SCOPES:
+        diff[time][scope] = {}
+        diff[time][scope]['value'] = parameter[scope]['value'] if parameter[scope] else None
+        diff[time][scope]['is_modified'] = parameter[scope]['is_modified'] if parameter[scope] else None
 
 
-def quote_value(value):
-    if len(value) > 0:
-        return "'%s'" % value
+def get_existing_parameter(name, mode):
+    """Get existing value of the parameter in memory and spfile."""
+    sql = "select name, value, '%s' as scope, null as sid, ismodified from v$parameter where name = :name" \
+          " union all " \
+          "select name, value, '%s', sid, isspecified from v$spparameter where name = :name" % (
+              MEMORY_SCOPE, SPFILE_SCOPE)
+    if name.startswith('_') and mode == 'sysdba':
+        sql += " union all " \
+               "select p.ksppinm, v.ksppstvl, 'hidden', '*', v.ksppstdf" \
+               "  from x$ksppi p, x$ksppcv v" \
+               " where p.indx = v.indx and p.ksppinm = :name"
+
+    rows = ora_db.execute_select(sql, {'name': name})
+    if rows:
+        result = {'name': name, MEMORY_SCOPE: {}, SPFILE_SCOPE: {}}
+        for row in rows:
+            value = row[1]
+            scope = row[2]
+            if scope == 'hidden':
+                if result[SPFILE_SCOPE]:
+                    continue  # If a spfile parameter is already defined, don't override the value.
+                else:
+                    scope = SPFILE_SCOPE  # Hidden parameter is a spfile parameter.
+            sid = row[3] if row[3] is not None else None  # It's meant to avoid override of previous value by None.
+            is_modified = row[4] != 'FALSE'
+
+            result[scope]['value'] = value
+            result[scope]['is_modified'] = is_modified
+            result['sid'] = sid
+        return result
     else:
-        return value
-
-
-def quote_name(name):
-    if len(name) > 0:
-        return """\"%s\"""" % name
-    else:
-        return name
-
-
-def clean_string(item):
-    item = item.replace("""\"""", "")
-
-    return item
-
-
-def reset_parameter(module, mode, msg, cursor, name, value, scope, sid):
-    starters = ('+', '_', '"', '"_')
-    if not name:
-        module.fail_json(msg='Error: Missing parameter name', changed=False)
-        return False
-
-    if module.check_mode:
-        module.exit_json(changed=True)
-
-    if name.startswith(starters):
-        name = quote_name(name)
-
-    sql = 'alter system reset %s scope=spfile sid=\'%s\'' % (name, sid)
-
-    try:
-        cursor.execute(sql)
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        if error.code == 32010:
-            name = clean_string(name)
-            msg[0] = 'The parameter (%s) is already set to its default value' % name
-            module.exit_json(msg=msg[0], changed=False)
-            return True
-
-        msg[0] = 'Blergh, something went wrong while resetting the parameter - %s sql: %s' % (error.message, sql)
-        return False
-
-    name = clean_string(name)
-    msg[0] = 'The parameter (%s) has been reset to its default value' % name
-    return True
-
-
-def get_curr_value(module, mode, msg, cursor, name, scope):
-    if scope == 'spfile':
-        parameter_source = 'v$spparameter'
-    else:
-        parameter_source = 'v$parameter'
-
-    if mode == 'sysdba':
-        name = clean_string(name)
-        sql = 'select lower(y.ksppstdvl)' \
-              '  from sys.x$ksppi x, sys.x$ksppcv y' \
-              ' where x.indx = y.indx and x.ksppinm = lower(\'%s\')' % (name)
-    else:
-        sql = 'select lower(display_value) from %s where name = lower(\'%s\')' % (parameter_source, name)
-
-    try:
-        cursor.execute(sql)
-        result = (cursor.fetchall()[0][0])
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg[0] = 'Blergh, something went wrong while getting current value - %s sql: %s' % (error.message, sql)
-        module.fail_json(msg=msg[0], changed=False)
-        return False
-
-    return result
+        return None
 
 
 def main():
-    msg = ['']
+    global module
+    global ora_db
+    global existing_parameter
+    global diff
+
     module = AnsibleModule(
         argument_spec=dict(
-            hostname=dict(default='localhost'),
-            port=dict(default=1521),
-            service_name=dict(required=True),
-            user=dict(required=False),
-            password=dict(required=False, no_log=True),
-            mode=dict(default='normal', choices=["normal", "sysdba"]),
-            name=dict(default=None, aliases=['parameter']),
-            value=dict(default=None),
-            state=dict(default="present", choices=["present", "absent", "reset"]),
-            scope=dict(default="both", choices=["both", "spfile", "memory"]),
-            sid=dict(default="*"),
+            hostname=dict(type='str', default='localhost'),
+            mode=dict(type='str', default='normal', choices=['normal', 'sysdba']),
+            name=dict(type='str', required=True, aliases=['parameter']),
+            oracle_home=dict(type='str', required=False),
+            password=dict(type='str', required=False, no_log=True),
+            port=dict(type='int', default=1521),
+            scope=dict(type='str', default='both', choices=['both', MEMORY_SCOPE, SPFILE_SCOPE]),
+            service_name=dict(type='str', required=True),
+            sid=dict(type='str', default='*'),
+            state=dict(type='str', default='defined', choices=['absent', 'default', 'defined', 'present']),
+            username=dict(type='str', required=False, aliases=['user']),
+            value=dict(type='str', required=False),
         ),
-        supports_check_mode=True
+        required_together=[['username', 'password']],
+        required_if=[['state', 'present', ['value']],
+                     ['state', 'defined', ['value']], ],
+        supports_check_mode=True,
     )
 
-    hostname = module.params["hostname"]
-    port = module.params["port"]
-    service_name = module.params["service_name"]
-    user = module.params["user"]
-    password = module.params["password"]
-    mode = module.params["mode"]
-    name = module.params["name"]
-    value = module.params["value"]
-    state = module.params["state"]
-    scope = module.params["scope"]
-    sid = module.params["sid"]
+    mode = module.params['mode']
+    name = module.params['name']
+    scope = module.params['scope']
+    sid = module.params['sid']
+    state = module.params['state']
+    value = module.params['value']
 
-    if not cx_oracle_exists:
-        module.fail_json(
-            msg="The cx_Oracle module is required. 'pip install cx_Oracle' should do the trick.")
-
-    wallet_connect = '/@%s' % service_name
-    try:
-        # If neither user or password is supplied, the use of an oracle wallet is assumed
-        if not user and not password:
-            if mode == 'sysdba':
-                connect = wallet_connect
-                conn = cx_Oracle.connect(wallet_connect, mode=cx_Oracle.SYSDBA)
-            else:
-                connect = wallet_connect
-                conn = cx_Oracle.connect(wallet_connect)
-
-        elif user and password:
-            if mode == 'sysdba':
-                dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-                connect = dsn
-                conn = cx_Oracle.connect(user, password, dsn, mode=cx_Oracle.SYSDBA)
-            else:
-                dsn = cx_Oracle.makedsn(host=hostname, port=port, service_name=service_name)
-                connect = dsn
-                conn = cx_Oracle.connect(user, password, dsn)
-
-        elif not user or not password:
-            module.fail_json(msg='Missing username or password for cx_Oracle')
-
-    except cx_Oracle.DatabaseError as exc:
-        error, = exc.args
-        msg[0] = 'Could not connect to database - %s, connect descriptor: %s' % (error.message, connect)
-        module.fail_json(msg=msg[0], changed=False)
-
-    cursor = conn.cursor()
-
+    # Transforming parameters
     if state == 'present':
-        if check_parameter_exists(module, mode, msg, cursor, name):
-            if modify_parameter(module, mode, msg, cursor, name, value, scope, sid):
-                module.exit_json(msg=msg[0], changed=True)
-            else:
-                module.fail_json(msg=msg[0], changed=False)
-        else:
-            module.fail_json(msg=msg[0], changed=False)
+        state = 'defined'
+    elif state == 'absent':
+        state = 'default'
+    scopes = ALL_SCOPES if scope == 'both' else [scope]
 
-    elif state == 'reset' or state == 'absent':
-        if check_parameter_exists(module, mode, msg, cursor, name):
-            if reset_parameter(module, mode, msg, cursor, name, value, scope, sid):
-                module.exit_json(msg=msg[0], changed=True)
-            else:
-                module.fail_json(msg=msg[0], changed=False)
-        else:
-            module.fail_json(msg=msg[0], changed=False)
+    ora_db = OraDB(module)
 
-    module.exit_json(msg=msg[0], changed=False)
+    existing_parameter = get_existing_parameter(name, mode)
+    if existing_parameter is None:
+        module.fail_json(msg="Parameter %s doesn't exist or sysdba privileges needed." % name, changed=False)
 
+    diff = {'before': {}, 'after': {}}
+    _set_diff('before', name, mode)
 
-from ansible.module_utils.basic import AnsibleModule, re
+    if state == 'defined':
+        ensure_defined(name, value, scopes, sid, mode)
+    else:
+        ensure_default(name, scopes, sid, mode)
+
 
 if __name__ == '__main__':
     main()

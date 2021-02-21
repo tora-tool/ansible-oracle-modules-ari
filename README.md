@@ -65,6 +65,19 @@ The Python module `cx_Oracle` needs to be installed on the Ansible host. (`pip i
   States `present` and `absent` ensure privileges are present or absent.
   State `identical` replace privileges with the ones in parameter.
 
+#### oracle_parameter ####
+
+- This module manages parameters in an Oracle database (i.e _alter system set param=value_).
+- Parameters value comparison is case sensitive, module wise. To avoid Ansible *changed* state, check the case of the value.
+- Hidden parameters can be changed using sysdba privileges.
+
+**Note:**
+When specifying sga-parameters the database requests memory based on granules which are variable in size depending on the size requested,
+and that means the database may round the requested value to the nearest multiple of a granule.
+e.g sga_max_size=1500M will be rounded up to 1504 (which is 94 granules of 16MB). That will cause the displayed value to be 1504M, which has
+the effect that the next time the module is is run with a desired value of 1500M it will be changed again.
+So that is something to consider when setting parameters that affects the SGA.
+
 #### oracle_pdb ####
 
 - This module manages pluggable databases (PDB) in an Oracle container database (CDB).
@@ -174,20 +187,6 @@ pre-req: cx_Oracle, ldap, re
 - Syncronises users/role grants from LDAP/Active Directory to the database
 
 #### oracle_opatch ####
-
-#### oracle_parameter ####
-
-pre-req: cx_Oracle
-
-- Manages init parameters in the database (i.e alter system set parameter...)
-- Also handles underscore parameters. That will require using mode=sysdba, to be able to read the X$ tables needed to verify the existence of the parameter.
-
-**Note:**
-When specifying sga-parameters the database requests memory based on granules which are variable in size depending on the size requested,
-and that means the database may round the requested value to the nearest multiple of a granule.
-e.g sga_max_size=1500M will be rounded up to 1504 (which is 94 granules of 16MB). That will cause the displayed value to be 1504M, which has
-the effect that the next time the module is is run with a desired value of 1500M it will be changed again.
-So that is something to consider when setting parameters that affects the SGA.
 
 #### oracle_profile ####
 
