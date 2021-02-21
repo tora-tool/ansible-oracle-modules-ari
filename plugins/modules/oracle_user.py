@@ -380,6 +380,7 @@ def main():
             temporary_tablespace=dict(type='str', default=None),
             username=dict(type='str', required=False, aliases=['user']),
         ),
+        required_together=[['username', 'password']],
         supports_check_mode=True,
     )
 
