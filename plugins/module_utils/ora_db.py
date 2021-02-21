@@ -33,7 +33,7 @@ class OraDB:
         - hostname, port and service_name to generate a DSN,
         - username and password to connect as a user,
         - mode to know if it must connect in sysdba.
-        For connection with a wallet, module doesn't need parameter.
+        For connection with a wallet, module doesn't need username nor password.
         """
         if not HAS_CX_ORACLE:
             module.fail_json(msg='Unable to load cx_Oracle. Try `pip install cx_Oracle`')
@@ -85,7 +85,7 @@ class OraDB:
             return self.cursor.fetchone() if fetchone else self.cursor.fetchall()
         except cx_Oracle.DatabaseError as e:
             error = e.args[0]
-            self.module.fail_json(msg=error.message, code=error.code, request=sql, params=params)
+            self.module.fail_json(msg=error.message, code=error.code, request=sql, params=params, ddls=self.ddls)
 
     def execute_select_to_dict(self, sql, params=None):
         """Execute a select query and return a list of dictionaries : one dictionary for each row.
@@ -102,7 +102,7 @@ class OraDB:
             return [dict(zip(column_names, row)) for row in self.cursor]
         except cx_Oracle.DatabaseError as e:
             error = e.args[0]
-            self.module.fail_json(msg=error.message, code=error.code, request=sql, params=params)
+            self.module.fail_json(msg=error.message, code=error.code, request=sql, params=params, ddls=self.ddls)
 
     def execute_ddl(self, request):
         """Execute a DDL request and keep trace it in ddls attribute.
