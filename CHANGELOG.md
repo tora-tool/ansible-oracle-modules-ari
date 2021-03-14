@@ -1,5 +1,9 @@
 # Changelog #
 
+## 1.1.1 ##
+
+* Adapt integration tests to ansible-test usage
+
 ## 1.1.0 ##
 
 * Refactor oracle_parameter module

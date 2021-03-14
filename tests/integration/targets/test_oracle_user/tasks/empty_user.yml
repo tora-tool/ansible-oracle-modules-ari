@@ -1,0 +1,48 @@
+---
+- name: "define connection parameters"
+  set_fact:
+    connection_parameters: &con_param
+      service_name: "{{ service_name }}"
+      username: "SYS"
+      password: "{{ sys_password }}"
+      mode: "sysdba"
+
+- name: "user creation"
+  oracle_user:
+    <<: *con_param
+    schema_name: "foo"
+    schema_password: "pass"
+    state: "empty"
+
+- name: "empty an empty schema"
+  oracle_user:
+    <<: *con_param
+    schema_name: "foo"
+    state: "empty"
+  register: _
+  failed_when: _.failed or _.changed
+
+- name: "add a table and a view to schema"
+  oracle_sql:
+    <<: *con_param
+    script: |
+      create table foo.bar (col1 varchar2(10));
+      create view foo.baz as (select col1 from bar);
+
+- name: "empty an non empty schema"
+  oracle_user:
+    <<: *con_param
+    schema_name: "foo"
+    state: "empty"
+  register: _
+  failed_when: |
+    _.failed or not _.changed or
+    (('drop TABLE' not in _.ddls[0] or 'drop VIEW' not in _.ddls[1]) and
+    ('drop TABLE' not in _.ddls[1] or 'drop VIEW' not in _.ddls[0]))
+
+- name: "delete user"
+  oracle_user:
+    <<: *con_param
+    schema_name: "foo"
+    state: "absent"
+...

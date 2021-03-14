@@ -6,28 +6,12 @@ This project is a fork from https://github.com/oravirt/ansible-oracle-modules ma
 
 ### Difference from @oravirt project ###
 
-So far, I've :
-
-1. fixed documentation generation (ansible-doc is now working for every module),
-1. created an oracle_directory module,
-1. fixed and/or refactored some modules (see below),
-1. started to add tests with playbooks for changed modules,
-1. made these modules a [collection](https://galaxy.ansible.com/ari_stark/ansible_oracle_modules).
-
-### What next ? ###
-
-I'm planning to :
-
-1. continue refactoring some modules to implements check mode, diff mode and return ddls executed,
-1. make some module_utils to share code between modules (database connection, handling a request, etc.),
-1. add some new modules (oracle_quota),
-1. maybe add unit tests in Python (to use with ansible-test, but don't know how to do yet).
-
-### Tests ###
-
-Changes were tested with Ansible 2.9 and Python 3.
-
-Compile and sanity tests (with ansible-test) were run against Python 2.7 and 3.5 to 3.9.
+The purpose of the fork is to :
+1. use Ansible standards (check mode, diff mode, ansible-doc, ansible-test, ...),
+1. clean code,
+1. reuse code with _module_utils_,
+1. change the gathering of modules into a [collection](https://galaxy.ansible.com/ari_stark/ansible_oracle_modules) to ease its use and versioning,
+1. fix bugs, add features, add tests.
 
 ## Usage ##
 
@@ -36,15 +20,11 @@ The collection page is here : https://galaxy.ansible.com/ari_stark/ansible_oracl
 
 ## Oracle modules for Ansible ##
 
-Initial readme can be found here : https://github.com/oravirt/ansible-oracle-modules/blob/master/README.md.
-
-I'll describe only modules I refactored or created.
-
 ### Pre-requisite ###
 
 The Python module `cx_Oracle` needs to be installed on the Ansible host. (`pip install cx_Oracle`)
 
-### Created or refactored modules ###
+### Modules forked from @oravirt's ###
 
 #### oracle_directory ####
 
@@ -119,7 +99,7 @@ So that is something to consider when setting parameters that affects the SGA.
 - It can change password of users ; lock/unlock and expire/unexpire accounts.
 - It can't be used to give privileges (refer to oracle_grant).
 
-### Unchanged modules ###
+### Modules identical to @oravirt's (sort of) ###
 
 #### oracle_asmdg ####
 
@@ -217,3 +197,20 @@ At the moment, Idempotence only applies to the state (present,absent,started, st
 pre-req: cx_Oracle
 
 - Managing DBMS_STATS global preferences
+
+## Tests ##
+
+Tests are made against an Oracle XE 18.4 database. Tests are now launch with ansible-test.
+
+* Compile and sanity tests were run against Python 2.7 and 3.5 to 3.9. There's still a lot of change to make to comply to sanity tests, but compile error should all be fixed.
+* Integration tests for refactored modules are available in `tests/integration`.
+* Unit tests are not integrated in the collection for now, but they should follow.
+
+To launch tests:
+* `ansible-test sanity --docker default`
+* `ansible-test integration`
+
+To launch code coverage:
+* `ansible-test coverage erase`
+* `ansible-test integration --coverage`
+* `ansible-test coverage report` or `ansible-test coverage html` for more details.
