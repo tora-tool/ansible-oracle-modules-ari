@@ -67,6 +67,14 @@ So that is something to consider when setting parameters that affects the SGA.
   * open or close a PDB.
 - Only a few Oracle options are available to create, drop or alter a pluggable database.
 
+#### oracle_quota ####
+
+- This module manages Oracle quota for users.
+- It can ensure a single quota is present/absent.
+- It can ensure a list of quotas matches the quotas in database.
+- It can ensure a user has no quota.
+- Username and tablespace name are case insensitive.
+
 #### oracle_role ####
 
 - This module manages Oracle role objects.
@@ -210,7 +218,7 @@ Tests are made against an Oracle XE 18.4 database. Tests are now started with an
 To run tests:
 * `ansible-test sanity --docker default`
 * `ansible-test units --docker default --python [2.7|3.6|...]`
-* `ansible-test integration`
+* `ansible-test integration` (requires a local database, and only run with Ansible version >=2.10 due to the use or community.general.json_query filter)
 
 To run code coverage:
 * `ansible-test coverage erase`
