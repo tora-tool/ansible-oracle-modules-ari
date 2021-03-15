@@ -200,17 +200,19 @@ pre-req: cx_Oracle
 
 ## Tests ##
 
-Tests are made against an Oracle XE 18.4 database. Tests are now launch with ansible-test.
+Tests are made against an Oracle XE 18.4 database. Tests are now started with ansible-test.
 
 * Compile and sanity tests were run against Python 2.7 and 3.5 to 3.9. There's still a lot of change to make to comply to sanity tests, but compile error should all be fixed.
 * Integration tests for refactored modules are available in `tests/integration`.
-* Unit tests are not integrated in the collection for now, but they should follow.
+* Unit tests are available in `tests/unit`.
+* Lots of tests are still missing, specificaly for non refactored modules.
 
-To launch tests:
+To run tests:
 * `ansible-test sanity --docker default`
+* `ansible-test units --docker default --python [2.7|3.6|...]`
 * `ansible-test integration`
 
-To launch code coverage:
+To run code coverage:
 * `ansible-test coverage erase`
 * `ansible-test integration --coverage`
 * `ansible-test coverage report` or `ansible-test coverage html` for more details.

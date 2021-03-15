@@ -1,8 +1,0 @@
-[run]
-omit=
-    ../venv/*
-
-[report]
-omit=
-    ./*
-    */nosetests

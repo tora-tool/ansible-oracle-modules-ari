@@ -1,6 +1,6 @@
 /venv
 /.idea
-/tests/.coverage
+/tests/output
 /**/__pycache__
 /*.tar.gz
 /ansible_collections/

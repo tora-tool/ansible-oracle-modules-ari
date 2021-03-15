@@ -1,5 +1,9 @@
 # Changelog #
 
+## 1.1.2 ##
+
+* Adapt unit tests to ansible-test usage
+
 ## 1.1.1 ##
 
 * Adapt integration tests to ansible-test usage

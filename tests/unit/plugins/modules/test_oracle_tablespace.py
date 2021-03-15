@@ -1,10 +1,18 @@
-import os
-import sys
+# -*- coding: utf-8 -*-
+
+# Copyright: (c) 2020, Ari Stark <ari.stark@netcourrier.com>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+from __future__ import (absolute_import, division, print_function)
+
+__metaclass__ = type
+
 import unittest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../plugins/modules')))
-
-from oracle_tablespace import *
+from ansible_collections.ari_stark.ansible_oracle_modules.plugins.modules.oracle_tablespace import (ContentType,
+                                                                                                    Datafile,
+                                                                                                    FileType,
+                                                                                                    Size)
 
 
 class TestSize(unittest.TestCase):
