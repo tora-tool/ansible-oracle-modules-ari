@@ -1,6 +1,9 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+# Copyright: (c) 2016 Mikael Sandström <oravirt@gmail.com>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
 from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
@@ -12,93 +15,97 @@ short_description: Manage services in an Oracle database
 description:
     - Manage services in an Oracle database
 version_added: "0.8.0"
+author:
+    - Mikael Sandström (@oravirt)
 options:
-    name:
+    available_instances:
         description:
-            - The name of the service
-        required: true
-        default: None
-    oracle_home:
-        description:
-            - The name of the service
-        required: true
-        default: None
-        aliases: ['oh']
+            - The RAC instances on which the service can run in case of failure of preferred_instances.
+            - Comma-separated list
+        required: false
+        aliases: ['ai']
+        type: str
     database_name:
         description:
             - The database in which the service will run
         required: True
-        default: None
         aliases: ['db']
-    state:
-        description:
-            - The intended state of the service. 'status' will just show the status of the service
-        default: present
-        choices: ['present','absent','started','stopped', 'status']
-    preferred_instances:
-        description:
-            - The RAC instances on which the service will actively run. Comma-separated list
-        required: false
-        default: None
-        aliases: ['pi']
-    available_instances:
-        description:
-            - The RAC instances on which the service can run in case of failure of preferred_instances. Comma-separated list
-        required: false
-        default: None
-        aliases: ['ai']
-    pdb:
-        description:
-            - The pdb which the service is attached to
-        required: false
-        default: None
-    role:
-        description:
-            - Role of the service (primary, physical_standby, logical_standby, snapshot_standby)
-        required: false
-        default: None
-        choices: ['primary','physical_standby','logical_standby','snapshot_standby']
+        type: str
     force:
         description:
             - Adds the 'force' flag to the srvctl command
         default: False
-        choices: ['true','false']
-    username:
-        description:
-            - The database username to connect to the database if using dbms_service
-        required: false
-        default: None
-        aliases: ['un']
-    password:
-        description:
-            - The password to connect to the database if using dbms_service
-        required: false
-        default: None
-        aliases: ['pw']
-    service_name:
-        description:
-            - The service_name to connect to the database if using dbms_service.
-        required: false
-        default: database_name. Will be set to the pdb-name if pdb is set
-        aliases: ['sn']
+        type: bool
     hostname:
         description:
             - The host of the database if using dbms_service
         required: false
         default: localhost
         aliases: ['host']
+        type: str
+    name:
+        description:
+            - The name of the service
+        required: true
+        aliases: ['service']
+        type: str
+    oracle_home:
+        description:
+            - The name of the service
+        required: false
+        aliases: ['oh']
+        type: str
+    password:
+        description:
+            - The password to connect to the database if using dbms_service
+        required: false
+        aliases: ['pw']
+        type: str
+    pdb:
+        description:
+            - The pdb which the service is attached to
+        required: false
+        type: str
     port:
         description:
             - The listener port to connect to the database if using dbms_service
         required: false
         default: 1521
-
-
-
+        type: int
+    preferred_instances:
+        description:
+            - The RAC instances on which the service will actively run. Comma-separated list
+        required: false
+        aliases: ['pi']
+        type: str
+    role:
+        description:
+            - Role of the service (primary, physical_standby, logical_standby, snapshot_standby)
+        required: false
+        choices: ['primary','physical_standby','logical_standby','snapshot_standby']
+        type: str
+    service_name:
+        description:
+            - The service_name to connect to the database if using dbms_service.
+            - If not defined, I(database_name) will be used or pdb-name if I(pdb) is set.
+        required: false
+        aliases: ['sn']
+        type: str
+    state:
+        description:
+            - The intended state of the service. 'status' will just show the status of the service
+        default: present
+        choices: ['present','absent','started','stopped', 'status', 'restarted']
+        type: str
+    user:
+        description:
+            - The database username to connect to the database if using dbms_service
+        required: false
+        aliases: ['un', 'username']
+        type: str
 notes:
     - cx_Oracle needs to be installed
 requirements: [ "cx_Oracle" ]
-author: Mikael Sandström, oravirt@gmail.com, @oravirt
 '''
 
 EXAMPLES = '''
@@ -389,10 +396,8 @@ def main():
             password=dict(required=False, no_log=True, aliases=['pw']),
             service_name=dict(required=False, aliases=['sn']),
             hostname=dict(required=False, default='localhost', aliases=['host']),
-            port=dict(required=False, default=1521),
-
+            port=dict(required=False, default=1521, type='int'),
         ),
-
     )
 
     name = module.params["name"]
@@ -427,9 +432,9 @@ def main():
     else:
         gimanaged = False
         if not cx_oracle_exists:
-            msg[
-                0] = "System doesn\'t seem to be managed by GI, so the cx_Oracle module is required. 'pip install cx_Oracle' should do the trick. If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set"
-            module.fail_json(msg=msg[0])
+            module.fail_json(msg="System doesn\'t seem to be managed by GI, so the cx_Oracle module is required."
+                                 " 'pip install cx_Oracle' should do the trick."
+                                 " If cx_Oracle is installed, make sure ORACLE_HOME & LD_LIBRARY_PATH is set")
 
         else:
             if not service_name:
@@ -441,8 +446,8 @@ def main():
 
             wallet_connect = '/@%s' % service_name
             try:
-                if (
-                        not user and not password):  # If neither user or password is supplied, the use of an oracle wallet is assumed
+                # If neither user or password is supplied, the use of an oracle wallet is assumed
+                if not user and not password:
                     connect = wallet_connect
                     conn = cx_Oracle.connect(wallet_connect)
                 elif user and password:
@@ -507,7 +512,6 @@ def main():
                 module.fail_json(msg=msg[0], changed=True)
         else:
             module.fail_json(msg=msg[0], changed=True)
-
 
     elif state == 'status':
         if check_service_exists(cursor, module, msg, oracle_home, name, database_name):
