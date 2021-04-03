@@ -68,3 +68,106 @@ class Size:
             return True
         else:
             return False
+
+
+class Datafile:
+    """Class to modelize a data file clause."""
+    autoextend = None
+    maxsize = None
+    nextsize = None
+    path = None
+    size = None
+    block_size = None
+    max_blocks_for_small_file = 4194302
+
+    def __init__(self, path, size, autoextend=False, nextsize=None, maxsize=None, bigfile=False, block_size=8192):
+        self.path = path
+        self.size = Size(size) if size else None
+        self.autoextend = autoextend
+        self.nextsize = Size(nextsize) if nextsize else None
+        self.maxsize = Size(maxsize) if maxsize else None
+        self.block_size = block_size
+        # For a smallfile unlimited is max_blocks * block_size.
+        if not bigfile and self.maxsize and self.max_blocks_for_small_file * self.block_size == self.maxsize.size:
+            self.maxsize.unlimited = True
+
+    def data_file_clause(self):
+        sql = "'%s' %s" % (self.path, self.file_specification_clause())
+        return sql
+
+    def file_specification_clause(self):
+        sql = "size %s reuse %s" % (self.size, self.autoextend_clause())
+        return sql
+
+    def autoextend_clause(self):
+        if self.autoextend:
+            sql = ' autoextend on'
+            if self.nextsize:
+                sql += ' next %s' % self.nextsize
+            if self.maxsize:
+                sql += ' maxsize %s' % self.maxsize
+        else:
+            sql = ' autoextend off'
+        return sql
+
+    def asdict(self):
+        _dict = {'path': self.path, 'size': str(self.size), 'autoextend': self.autoextend}
+        if self.autoextend:
+            if self.nextsize:
+                _dict['nextsize'] = str(self.nextsize)
+            if self.maxsize:
+                _dict['maxsize'] = str(self.maxsize)
+        return _dict
+
+    def needs_resize(self, prev):
+        """Resize is done only if datafile must be bigger and is not on autoextend"""
+        return not self.autoextend and prev.size.__lt__(self.size)
+
+    def needs_change_autoextend(self, prev):
+        """Autoextend change when switching from off to on, and conversely, or when it's on and sizes change"""
+        has_maxsize_changed = self.autoextend and self.maxsize is not None and not self.maxsize.__eq__(prev.maxsize)
+        has_nextsize_changed = self.autoextend and self.nextsize is not None and not self.nextsize.__eq__(prev.nextsize)
+        return self.autoextend != prev.autoextend or has_maxsize_changed or has_nextsize_changed
+
+
+class FileType:
+    """Sugar class to manage tablespace file type : smallfile or bigfile."""
+    bigfile = None
+
+    def __init__(self, bigfile):
+        self.bigfile = bigfile
+
+    def __str__(self):
+        return 'bigfile' if self.bigfile else 'smallfile'
+
+    def __eq__(self, other):
+        if not isinstance(other, FileType):
+            return False
+        return self.bigfile == other.bigfile
+
+    def is_bigfile(self):
+        return self.bigfile
+
+
+class ContentType:
+    """Sugar class to manage tablespace content type : temp, undo or permanent."""
+    content = None
+
+    def __init__(self, content):
+        self.content = content
+
+    def __str__(self):
+        return self.content
+
+    def __eq__(self, other):
+        if not isinstance(other, ContentType):
+            return False
+        return self.content == other.content
+
+    def create_clause(self):
+        map_clause = {'permanent': '', 'undo': 'undo', 'temp': 'temporary'}
+        return map_clause[self.content]
+
+    def datafile_clause(self):
+        map_clause = {'permanent': 'datafile', 'undo': 'datafile', 'temp': 'tempfile'}
+        return map_clause[self.content]

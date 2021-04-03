@@ -4,6 +4,7 @@
 
 * Add module oracle_quota
 * Create a module utils ora_object which can contain classes to manage Oracle objects (ie. size clause).
+* Move inner classes from oracle_tablespace to ora_object.
 
 ## 1.1.2 ##
 
