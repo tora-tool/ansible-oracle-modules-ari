@@ -221,6 +221,44 @@ def has_password_changed(schema_name, schema_password):
     return ora_db.try_connect(schema_name, schema_password) == expected_error
 
 
+def empty_schema(schema_name):
+    """
+    Empty a schema by droping existing objects.
+    Return true if changed were made.
+    Emptying of the schema is a two steps action: table must be drop last, because materialized view also create tables
+    which are dropped during the drop of the materialized view.
+    """
+    has_changed = False
+
+    rows = ora_db.execute_select(
+        "select object_name, object_type"
+        "  from all_objects"
+        " where object_type in ('DATABASE LINK', 'FUNCTION', 'MATERIALIZED VIEW', 'PACKAGE', 'PROCEDURE',"
+        "                      'SEQUENCE', 'SYNONYM', 'TABLE PARTITION', 'TRIGGER', 'TYPE', 'VIEW')"
+        "   and owner = '%s' and generated = 'N'" % schema_name.upper())
+
+    for row in rows:
+        object_name = row[0]
+        object_type = row[1]
+        ora_db.execute_ddl('drop %s %s."%s"' % (object_type, schema_name, object_name))
+        has_changed = True
+
+    # Drop tables after drop materialized views (mviews are two objects in oracle: one mview and one table).
+    rows = ora_db.execute_select(
+        "select object_name, object_type"
+        "  from all_objects"
+        " where object_type = 'TABLE'"
+        "   and owner = '%s' and generated = 'N'" % schema_name.upper())
+
+    for row in rows:
+        object_name = row[0]
+        object_type = row[1]
+        ora_db.execute_ddl('drop %s %s."%s" cascade constraints' % (object_type, schema_name, object_name))
+        has_changed = True
+
+    return has_changed
+
+
 def ensure_present(schema_name, authentication_type, schema_password, default_tablespace, temporary_tablespace,
                    profile, locked, expired, empty):
     """Create or modify the user"""
@@ -293,21 +331,7 @@ def ensure_present(schema_name, authentication_type, schema_password, default_ta
                 changed = True
 
         if empty:
-            rows = ora_db.execute_select(
-                "select object_name, object_type"
-                "  from all_objects"
-                " where object_type in('TABLE', 'VIEW', 'PACKAGE', 'PROCEDURE', 'FUNCTION', 'SEQUENCE',"
-                "                      'SYNONYM', 'TYPE', 'DATABASE LINK', 'TABLE PARTITION')"
-                "   and owner = '%s' and generated = 'N'" % schema_name.upper())
-
-            for row in rows:
-                object_name = row[0]
-                object_type = row[1]
-                ora_db.execute_ddl('drop %s %s."%s" %s' % (
-                    object_type, schema_name, object_name, 'cascade constraints' if object_type == 'TABLE' else ''))
-
-            if len(rows) != 0:
-                emptied = True
+            emptied = empty_schema(schema_name)
 
         if changed or emptied:
             if changed:

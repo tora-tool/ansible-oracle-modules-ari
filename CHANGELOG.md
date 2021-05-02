@@ -1,5 +1,9 @@
 # Changelog #
 
+## 1.2.1 ##
+
+* Add drop of materialized view and trigger on emptying schema.
+
 ## 1.2.0 ##
 
 * Add module oracle_quota
